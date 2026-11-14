@@ -44,8 +44,9 @@ describe('mapGraph', () => {
   it('has every node, including ones without edges, and every edge', () => {
     const graph = mapGraph(map);
     expect(graph.nodeCount).toBe(Object.keys(map.nodes).length);
-    const a = graph.id('f:src/a.ts')!;
-    expect(graph.dependencies(a).map((id) => graph.name(id))).toContain('f:src/b.ts');
+    const names = (key: string) => graph.dependencies(graph.id(key)!).map((id) => graph.name(id));
+    expect(names('f:src/a.ts')).toContain('r:src/b');
+    expect(names('r:src/b')).toEqual(['f:src/b.ts']);
   });
 
   it('is identical however the map was ordered', () => {

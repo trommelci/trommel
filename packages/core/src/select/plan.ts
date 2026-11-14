@@ -3,8 +3,9 @@
 // unproven static reachability, reported in shadow mode only.
 //
 // Δ(S,H): files and listings come from the Merkle descent against the snapshot stored in the map;
-// g: and p: nodes are recomputed at H and compared. Every u: node is always a seed. What the
-// graph cannot see escalates, and a map or input that cannot be trusted runs everything (L3).
+// g: and p: nodes, and the r: and c: hubs, are recomputed at H and compared. Every u: node is
+// always a seed. What the graph cannot see escalates, and a map or input that cannot be trusted
+// runs everything (L3).
 //
 // Unmapped inputs (L1, ADR-0005, DECISIONS 29): a changed file that is not a node, and a changed
 // node that no test of the map reaches. Something outside the graph may still read it: a child
@@ -21,7 +22,7 @@ import type { ObjectFormat } from '../git/git.ts';
 import type { ObjectType } from '../git/ls-tree.ts';
 import { forwardReach, reverseReach, whyPath } from '../graph/graph.ts';
 import { mapGraph } from '../graph/map.ts';
-import { globHash, isModule, readLockfile, type LockfileState, type MapLockfile, type TrommelMap } from '../graph/static.ts';
+import { globHash, hubHash, isHub, isModule, readLockfile, type LockfileState, type MapLockfile, type TrommelMap } from '../graph/static.ts';
 import { LOCKFILE_PATHS } from '../lockfile/npm.ts';
 import { matchGlobs } from '../resolve/glob.ts';
 import { Resolver, type Vfs } from '../resolve/resolver.ts';
@@ -101,13 +102,17 @@ export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules)
       changed.add(`d:${dir}`);
     }
   }
-  for (const key of recomputedChanges(map, head, headLockfile)) {
+  const resolver = new Resolver(head.vfs);
+  for (const key of recomputedChanges(map, head, headLockfile, resolver)) {
+    changed.add(key);
+  }
+  const hubs = changedHubs(map, head, resolver, delta.listings.length > 0);
+  for (const key of hubs.changed) {
     changed.add(key);
   }
   // Every u: node, not only those with causes: a damaged map must not hide one.
   const uncertain = Object.keys(map.nodes).filter((key) => key.startsWith('u:')).sort(compareStrings);
 
-  const resolver = new Resolver(head.vfs);
   const escalations: Escalation[] = [];
   const ignored = new Set<string>();
   const ignore = rules.ignore ?? [];
@@ -122,9 +127,10 @@ export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules)
   for (const change of delta.files) {
     const { path, kind } = change;
     const handled = Object.hasOwn(map.nodes, `f:${path}`) || path === CONFIG_PATH || LOCKFILE_PATHS.includes(path);
-    // A new module nothing loaded at S can only matter through probes and listings already in Δ, and
-    // a new file that a glob of the map matches shows in Δ as that glob's changed hash.
-    const seen = kind === 'added' && (isModule(path) || globbed.some((patterns) => matchGlobs([path], patterns).length > 0));
+    // A new module nothing loaded at S can only matter through probes and listings already in Δ. A
+    // new file that a glob of the map matches shows in Δ as that glob's changed hash, and one that
+    // a changed hub now finds, as that hub's.
+    const seen = kind === 'added' && (isModule(path) || hubs.found.has(path) || globbed.some((patterns) => matchGlobs([path], patterns).length > 0));
     if (handled || seen || exempt(path)) {
       continue;
     }
@@ -193,12 +199,45 @@ export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules)
   };
 }
 
-/** The repository path a node stands for: a file, directory or package location; null for a glob. */
+/**
+ * The repository path a node stands for: a file, directory, package location or the path or
+ * directory of a hub; null for a glob.
+ */
 function pathOf(key: string): string | null {
-  if (key.startsWith('f:') || key.startsWith('d:') || key.startsWith('u:')) {
+  if (key.startsWith('f:') || key.startsWith('d:') || key.startsWith('u:') || isHub(key)) {
     return key.slice(2);
   }
   return key.startsWith('p:npm:') ? key.slice('p:npm:'.length) : null;
+}
+
+/**
+ * The hubs whose hash differs at H, and every file and config those hubs find at H.
+ *
+ * A hub's hash covers which of its candidates exist and the listings it read; what an existing
+ * file or config holds is the business of the hub's edges. So with no listing changed anywhere,
+ * nothing a hub's hash covers can have changed (a file that appears, vanishes or changes kind
+ * changes its directory's listing; DECISIONS 12), and the hubs need not be recomputed. Any
+ * difference that config contents cause shows through the changed config's own node.
+ */
+function changedHubs(map: TrommelMap, head: HeadState, resolver: Resolver, listingsChanged: boolean): { changed: string[]; found: Set<string> } {
+  const changed: string[] = [];
+  const found = new Set<string>();
+  if (!listingsChanged) {
+    return { changed, found };
+  }
+  for (const [key, hash] of Object.entries(map.nodes)) {
+    if (!isHub(key)) {
+      continue;
+    }
+    const hub = resolver.hub(key);
+    if (hubHash(head.index, hub) !== hash) {
+      changed.push(key);
+      for (const path of [...hub.targets, ...hub.configs]) {
+        found.add(path);
+      }
+    }
+  }
+  return { changed, found };
 }
 
 /** Whether `path` is the package directory `scope` or below it; '' holds everything. */
@@ -255,14 +294,14 @@ function describe(lockfile: MapLockfile | LockfileState): string {
 }
 
 /** g: and p: nodes whose hash at H differs from the map's. */
-function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileState): string[] {
+function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileState, resolver: Resolver): string[] {
   const changed: string[] = [];
   const packages = lockfile.kind === 'npm' ? lockfile.lockfile.packages : new Map<string, { hash: string }>();
   let files: readonly string[] | null = null;
   for (const [key, hash] of Object.entries(map.nodes)) {
     let now: string | null | undefined;
     if (key === 'g:workspaces') {
-      now = globHash(new Resolver(head.vfs).workspaces().names);
+      now = globHash(resolver.workspaces().names);
     } else if (key.startsWith('g:')) {
       const patterns = map.globs[key];
       files ??= head.vfs.files();

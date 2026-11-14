@@ -7,6 +7,12 @@
 // absent (⊥) node, a probed directory a `d:` node, a config file read a config node — so a
 // result depends only on what it recorded. Anything it cannot decide is `unresolved`, never
 // silently dropped.
+//
+// Evidence that depends only on one path or one directory is a resolution hub (ADR-0003,
+// DECISIONS 32): `r:<path>` holds what resolving that path probed, and `c:<dir>` the config chain
+// that governs files in that directory. Each hub is worked out once and shared by every importer,
+// so the map gives an import one edge to its hub instead of one edge per probe. A Resolution still
+// lists everything it recorded; `hubs` and `direct` say how that splits.
 import type { ImportKind } from '../lex/ts.ts';
 import { escapeGlob, globToRegExp, matchGlobs } from './glob.ts';
 import { parseJsonc } from './jsonc.ts';
@@ -85,6 +91,29 @@ export interface Resolution {
   readonly reason?: string;
   /** Inputs the resolver could not read (an unparseable config): the result may be incomplete. */
   readonly uncertain?: true;
+  /** Hubs whose evidence the fields above include, sorted. */
+  readonly hubs: readonly string[];
+  /** The evidence recorded outside every hub in `hubs`: what the importer depends on itself. */
+  readonly direct: PathEvidence;
+}
+
+export interface PathEvidence {
+  readonly targets: readonly string[];
+  readonly absent: readonly string[];
+  readonly dirs: readonly string[];
+  readonly configs: readonly string[];
+}
+
+/**
+ * A resolution hub: `r:<path>`, what resolving one path probed, or `c:<dir>`, the config chain of
+ * one directory. The path fields hold what the hub recorded itself; its sub-hubs hold the rest.
+ */
+export interface Hub extends PathEvidence {
+  readonly key: string;
+  /** Sub-hubs, sorted: a package directory's entries, each resolved as a path of its own. */
+  readonly hubs: readonly string[];
+  readonly reason?: string;
+  readonly uncertain?: true;
 }
 
 export interface ResolveRequest {
@@ -118,12 +147,40 @@ class Evidence {
   readonly dirs = new Set<string>();
   readonly configs = new Set<string>();
   readonly globs = new Map<string, { readonly matches: readonly string[]; readonly patterns?: readonly string[] }>();
+  /** Hubs merged into the sets above, and what they put there. */
+  readonly hubs = new Set<string>();
+  readonly fromHubs = { targets: new Set<string>(), absent: new Set<string>(), dirs: new Set<string>(), configs: new Set<string>() };
   packageName: string | undefined;
   reason: string | undefined;
   uncertain = false;
 
   note(reason: string): void {
     this.reason ??= reason;
+  }
+
+  /**
+   * Merges a hub's evidence. Its reason counts as if its probes had been made here, in order. A
+   * null hub is one still being worked out further up the stack: a cycle of package entries.
+   */
+  include(key: string, hub: Evidence | null, uncertainty: boolean): void {
+    this.hubs.add(key);
+    if (hub === null) {
+      this.note('resolution cycle');
+      this.uncertain = true;
+      return;
+    }
+    for (const field of ['targets', 'absent', 'dirs', 'configs'] as const) {
+      for (const path of hub[field]) {
+        this[field].add(path);
+        this.fromHubs[field].add(path);
+      }
+    }
+    if (hub.reason !== undefined) {
+      this.note(hub.reason);
+    }
+    if (uncertainty && hub.uncertain) {
+      this.uncertain = true;
+    }
   }
 }
 
@@ -151,6 +208,8 @@ export class Resolver {
   private readonly tsconfigCache = new Map<string, Tsconfig>();
   private readonly packageJsonCache = new Map<string, Record<string, unknown> | null>();
   private workspaceCache: Workspaces | null = null;
+  /** Hub evidence by key; null while a hub is being worked out. */
+  private readonly hubCache = new Map<string, Evidence | null>();
 
   constructor(vfs: Vfs) {
     this.vfs = vfs;
@@ -169,10 +228,10 @@ export class Resolver {
       return finish(ev, false);
     }
     if (specifier.startsWith('node:') || BUILTINS.has(specifier)) {
-      return { kind: 'builtin', targets: [], absent: [], dirs: [], configs: [], globs: [] };
+      return { kind: 'builtin', targets: [], absent: [], dirs: [], configs: [], globs: [], hubs: [], direct: NO_EVIDENCE };
     }
     if (specifier.startsWith('data:')) {
-      return { kind: 'ignored', targets: [], absent: [], dirs: [], configs: [], globs: [] };
+      return { kind: 'ignored', targets: [], absent: [], dirs: [], configs: [], globs: [], hubs: [], direct: NO_EVIDENCE };
     }
     if (/^https?:/.test(specifier)) {
       ev.note('remote module');
@@ -197,7 +256,7 @@ export class Resolver {
       this.resolveRelative(fromDir, path, ev);
     } else if (path.startsWith('/')) {
       // Vite treats a leading slash as relative to its root: the package root, or the repo root.
-      for (const root of new Set([this.ownerDir(from), ''])) {
+      for (const root of new Set([this.owner(from, ev), ''])) {
         this.resolveRelative(root, `.${path}`, ev);
       }
     } else if (path.startsWith('#')) {
@@ -214,26 +273,86 @@ export class Resolver {
   /**
    * Config files that govern `path` itself, whatever it imports: its tsconfig chain and the nearest
    * package.json (whose `type` decides how Node loads it), plus every miss found on the way up.
+   * This is the evidence of the hub `c:<dirname(path)>`.
    */
   fileConfigs(path: string): { configs: string[]; absent: string[] } {
-    const tsconfig = this.findTsconfig(dirname(path));
-    const configs = new Set(tsconfig.files);
-    const absent = new Set(tsconfig.absent);
-    for (let dir = dirname(path); ; dir = dirname(dir)) {
-      const packageJson = joinPath(dir, 'package.json')!;
+    const hub = this.hub(`c:${dirname(path)}`);
+    return { configs: [...hub.configs], absent: [...hub.absent] };
+  }
+
+  /** The evidence a hub recorded itself. Throws for a key that is not `r:<path>` or `c:<dir>`. */
+  hub(key: string): Hub {
+    const ev = this.hubEvidence(key);
+    if (ev === null) {
+      throw new Error(`hub ${key} is still being resolved`);
+    }
+    const own = finish(ev, false).direct;
+    return {
+      key,
+      ...own,
+      hubs: [...ev.hubs].sort(compareStrings),
+      ...(ev.reason === undefined ? {} : { reason: ev.reason }),
+      ...(ev.uncertain ? { uncertain: true as const } : {}),
+    };
+  }
+
+  /** A hub's evidence, worked out once; null while it is being worked out (a cycle). */
+  private hubEvidence(key: string): Evidence | null {
+    const cached = this.hubCache.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const kind = key.slice(0, 2);
+    if (kind !== 'r:' && kind !== 'c:') {
+      throw new Error(`not a hub: ${key}`);
+    }
+    this.hubCache.set(key, null);
+    const ev = new Evidence();
+    if (kind === 'r:') {
+      this.probePath(key.slice(2), ev);
+    } else {
+      this.configChain(key.slice(2), ev);
+    }
+    this.hubCache.set(key, ev);
+    return ev;
+  }
+
+  /** The hub `c:<dir>`: the tsconfig chain of `dir` and the nearest package.json at or above it. */
+  private configChain(dir: string, ev: Evidence): void {
+    const tsconfig = this.findTsconfig(dir);
+    for (const file of tsconfig.files) {
+      ev.configs.add(file);
+    }
+    for (const path of tsconfig.absent) {
+      ev.absent.add(path);
+    }
+    if (tsconfig.uncertain) {
+      ev.uncertain = true;
+    }
+    for (let at = dir; ; at = dirname(at)) {
+      const packageJson = joinPath(at, 'package.json')!;
       if (this.vfs.kind(packageJson) === 'file') {
-        configs.add(packageJson);
+        ev.configs.add(packageJson);
         break;
       }
-      absent.add(packageJson);
-      if (dir === '') {
+      ev.absent.add(packageJson);
+      if (at === '') {
         break;
       }
     }
-    return { configs: [...configs].sort(compareStrings), absent: [...absent].sort(compareStrings) };
   }
 
-  /** The directory of the nearest package.json above `path` ('' when only the root has one, or none). */
+  /**
+   * The importer's package root (`ownerDir`), recorded as evidence: the package.json lookup lies in
+   * the importer's own `c:` hub (review finding L3). Its tsconfig plays no part in this lookup, so
+   * an unreadable one does not make the import uncertain.
+   */
+  private owner(from: string, ev: Evidence): string {
+    const key = `c:${dirname(from)}`;
+    ev.include(key, this.hubEvidence(key), false);
+    return this.ownerDir(from);
+  }
+
   /**
    * The package a path belongs to, for escalations: the deepest workspace member that holds it,
    * else the repository root (''). A package.json that is not a workspace member, such as a test
@@ -249,6 +368,7 @@ export class Resolver {
     return owner;
   }
 
+  /** The directory of the nearest package.json above `path` ('' when only the root has one, or none). */
   ownerDir(path: string): string {
     for (let dir = dirname(path); ; dir = dirname(dir)) {
       if (this.vfs.kind(joinPath(dir, 'package.json')!) === 'file' || dir === '') {
@@ -266,8 +386,14 @@ export class Resolver {
     this.resolvePath(path, ev);
   }
 
-  /** A path that may need an extension, a TypeScript source, an index file or a package entry. */
+  /** A path that may need an extension, a TypeScript source, an index file or a package entry: the hub `r:<path>`. */
   private resolvePath(path: string, ev: Evidence): void {
+    const key = `r:${path}`;
+    ev.include(key, this.hubEvidence(key), true);
+  }
+
+  /** The probes of `r:<path>`. They depend on the path alone, never on who imports it. */
+  private probePath(path: string, ev: Evidence): void {
     const kind = this.probe(path, ev);
     if (kind === 'file' || kind === 'symlink') {
       return; // every runner tries the exact path first
@@ -329,10 +455,7 @@ export class Resolver {
 
   /** `#name` from the nearest package.json's `imports`; targets may themselves be packages. */
   private resolveImportsField(from: string, specifier: string, ev: Evidence): void {
-    const dir = this.ownerDir(from);
-    for (let probe = dirname(from); probe !== dir; probe = dirname(probe)) {
-      ev.absent.add(joinPath(probe, 'package.json')!);
-    }
+    const dir = this.owner(from, ev);
     const json = this.packageJson(dir, ev);
     const targets = json === null ? null : exportsTargets(json['imports'], specifier, true);
     if (targets === null || targets.length === 0) {
@@ -431,18 +554,14 @@ export class Resolver {
     }
   }
 
-  /** The tsconfig governing files in `dir`, recorded as evidence; null when there is none. */
+  /**
+   * The tsconfig governing files in `dir`, recorded as evidence through the hub `c:<dir>`; null when
+   * there is none. An unreadable tsconfig makes the import uncertain: its `paths` are unknown.
+   */
   private tsconfigFor(dir: string, ev: Evidence): Tsconfig | null {
+    const key = `c:${dir}`;
+    ev.include(key, this.hubEvidence(key), true);
     const found = this.findTsconfig(dir);
-    for (const file of found.files) {
-      ev.configs.add(file);
-    }
-    for (const path of found.absent) {
-      ev.absent.add(path);
-    }
-    if (found.uncertain) {
-      ev.uncertain = true;
-    }
     return found.files.length === 0 ? null : found;
   }
 
@@ -620,7 +739,7 @@ export class Resolver {
     for (const pattern of patterns) {
       const negated = pattern.startsWith('!');
       const body = negated ? pattern.slice(1) : pattern;
-      const path = body.startsWith('/') ? joinPath(this.ownerDir(request.from), `.${body}`) : joinPath(baseDir, body);
+      const path = body.startsWith('/') ? joinPath(this.owner(request.from, ev), `.${body}`) : joinPath(baseDir, body);
       if (path === null) {
         ev.note('outside repository');
         return;
@@ -687,7 +806,7 @@ export class Resolver {
 
   /** Jest uses `<root>/__mocks__/<package>` automatically for node_modules packages. */
   private rootMocks(name: string, from: string, ev: Evidence): void {
-    for (const root of new Set(['', this.ownerDir(from)])) {
+    for (const root of new Set(['', this.owner(from, ev)])) {
       const mocks = joinPath(root, '__mocks__')!;
       ev.dirs.add(mocks);
       if (name.startsWith('@')) {
@@ -838,19 +957,32 @@ function targetsOf(value: unknown, star: string | null): string[] {
   return [];
 }
 
+const NO_EVIDENCE: PathEvidence = { targets: [], absent: [], dirs: [], configs: [] };
+
 function finish(ev: Evidence, isGlob: boolean): Resolution {
   const targets = [...ev.targets].sort(compareStrings);
+  const absent = [...ev.absent].filter((path) => !ev.targets.has(path)).sort(compareStrings);
+  const dirs = [...ev.dirs].sort(compareStrings);
+  const configs = [...ev.configs].sort(compareStrings);
   const kind: ResolutionKind = isGlob ? (ev.reason === undefined ? 'file' : 'unresolved') : targets.length > 0 ? 'file' : ev.packageName !== undefined ? 'external' : 'unresolved';
   return {
     kind,
     targets,
-    absent: [...ev.absent].filter((path) => !ev.targets.has(path)).sort(compareStrings),
-    dirs: [...ev.dirs].sort(compareStrings),
-    configs: [...ev.configs].sort(compareStrings),
+    absent,
+    dirs,
+    configs,
     globs: [...ev.globs].sort(([a], [b]) => compareStrings(a, b)).map(([key, glob]) => ({ key, ...glob })),
     ...(ev.packageName === undefined ? {} : { packageName: ev.packageName }),
     ...(kind === 'unresolved' ? { reason: ev.reason ?? 'not found' } : {}),
     ...(ev.uncertain ? { uncertain: true as const } : {}),
+    hubs: [...ev.hubs].sort(compareStrings),
+    // What a hub recorded is covered by the importer's edge to that hub.
+    direct: {
+      targets: targets.filter((path) => !ev.fromHubs.targets.has(path)),
+      absent: absent.filter((path) => !ev.fromHubs.absent.has(path)),
+      dirs: dirs.filter((path) => !ev.fromHubs.dirs.has(path)),
+      configs: configs.filter((path) => !ev.fromHubs.configs.has(path)),
+    },
   };
 }
 

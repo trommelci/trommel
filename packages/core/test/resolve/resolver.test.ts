@@ -82,6 +82,102 @@ describe('probe recording', () => {
   });
 });
 
+// Resolution hubs (ADR-0003): evidence that depends only on one path (`r:`) or one directory's
+// config chain (`c:`), recorded once and shared by every importer.
+describe('resolution hubs', () => {
+  const EXTS = ['.cjs', '.cts', '.js', '.json', '.jsx', '.mjs', '.mts', '.ts', '.tsx'];
+  const none = { targets: [], absent: [], dirs: [], configs: [] };
+
+  it('puts the probes of an extensionless path in one r: hub that every importer shares', () => {
+    const resolver = new Resolver(new MemoryVfs({ 'src/a.ts': '', 'src/c.ts': '', 'src/util.ts': '' }));
+    const a = resolver.resolve({ from: 'src/a.ts', specifier: './util', kind: 'static' });
+    const c = resolver.resolve({ from: 'src/c.ts', specifier: './util', kind: 'static' });
+    for (const result of [a, c]) {
+      expect(result.hubs).toEqual(['r:src/util']);
+      expect(result.direct).toEqual(none);
+      expect(result.targets).toEqual(['src/util.ts']);
+    }
+    expect(resolver.hub('r:src/util')).toEqual({
+      key: 'r:src/util',
+      targets: ['src/util.ts'],
+      absent: ['src/util', ...EXTS.filter((ext) => ext !== '.ts').map((ext) => `src/util${ext}`)].sort(),
+      dirs: ['src/util'],
+      configs: [],
+      hubs: [],
+    });
+  });
+
+  it('gives a package directory one hub with its package.json, and a sub-hub per entry it tries', () => {
+    const resolver = new Resolver(new MemoryVfs({ 'lib/pkg/package.json': '{"main":"main.js"}', 'lib/pkg/main.js': '', 'x.ts': '' }));
+    const result = resolver.resolve({ from: 'x.ts', specifier: './lib/pkg', kind: 'static' });
+    expect(result).toMatchObject({ kind: 'file', targets: ['lib/pkg/main.js'], hubs: ['r:lib/pkg'], direct: none });
+    expect(resolver.hub('r:lib/pkg')).toEqual({
+      key: 'r:lib/pkg',
+      targets: [],
+      absent: EXTS.map((ext) => `lib/pkg${ext}`),
+      dirs: ['lib/pkg'],
+      configs: ['lib/pkg/package.json'],
+      hubs: ['r:lib/pkg/index', 'r:lib/pkg/main.js'],
+    });
+    expect(resolver.hub('r:lib/pkg/main.js')).toEqual({ key: 'r:lib/pkg/main.js', ...none, targets: ['lib/pkg/main.js'], hubs: [] });
+  });
+
+  it("records a directory's config chain as one c: hub, the evidence of fileConfigs", () => {
+    const resolver = new Resolver(
+      new MemoryVfs({ 'package.json': '{}', 'a/tsconfig.json': '{ "extends": "../tsconfig.base" }', 'tsconfig.base.json': '{}', 'a/b/f.ts': '', 'a/b/g.ts': '' }),
+    );
+    expect(resolver.hub('c:a/b')).toEqual({
+      key: 'c:a/b',
+      targets: [],
+      absent: ['a/b/package.json', 'a/b/tsconfig.json', 'a/package.json', 'tsconfig.base'],
+      dirs: [],
+      configs: ['a/tsconfig.json', 'package.json', 'tsconfig.base.json'],
+      hubs: [],
+    });
+    expect(resolver.fileConfigs('a/b/g.ts')).toEqual({ configs: resolver.hub('c:a/b').configs, absent: resolver.hub('c:a/b').absent });
+  });
+
+  it('marks a hub uncertain when it reads a config it cannot parse', () => {
+    const resolver = new Resolver(new MemoryVfs({ 'tsconfig.json': '{', 'src/a.ts': '', 'src/p/package.json': 'not json' }));
+    expect(resolver.hub('c:src').uncertain).toBe(true);
+    expect(resolver.hub('r:src/p')).toMatchObject({ reason: 'invalid package.json', uncertain: true });
+    expect(resolver.resolve({ from: 'src/a.ts', specifier: './p', kind: 'static' })).toMatchObject({ kind: 'unresolved', uncertain: true });
+  });
+
+  it('makes a bare import uncertain when its tsconfig cannot be read, and a leading-slash path not', () => {
+    const resolver = new Resolver(new MemoryVfs({ 'tsconfig.json': '{', 'src/a.ts': '', 'src/b.ts': '' }));
+    expect(resolver.resolve({ from: 'src/a.ts', specifier: 'lodash', kind: 'static' }).uncertain).toBe(true);
+    expect(resolver.resolve({ from: 'src/a.ts', specifier: '/src/b.ts', kind: 'static' })).toMatchObject({ kind: 'file', targets: ['src/b.ts'] });
+    expect(resolver.resolve({ from: 'src/a.ts', specifier: '/src/b.ts', kind: 'static' }).uncertain).toBeUndefined();
+  });
+
+  // Review finding L3: these resolve against the importer's package root, so the lookup of that
+  // root is evidence too. Before, only the file's own config edges happened to cover it.
+  it.each([
+    ['a leading-slash path', { specifier: '/x.ts', kind: 'static' }],
+    ['a bare package, through its root mocks', { specifier: 'lodash', kind: 'static' }],
+    ['a subpath import', { specifier: '#x', kind: 'static' }],
+    ['a leading-slash glob', { specifier: null, kind: 'glob', patterns: ['/*.ts'] }],
+  ] as const)('records the package root lookup that %s resolves against', (_name, request) => {
+    const resolver = new Resolver(new MemoryVfs({ 'package.json': '{}', 'a/package.json': '{"imports":{"#x":"./x.ts"}}', 'a/x.ts': '', 'a/b/f.ts': '' }));
+    const result = resolver.resolve({ from: 'a/b/f.ts', ...request });
+    expect(result.hubs).toContain('c:a/b');
+    expect(result.configs).toContain('a/package.json');
+    expect(result.absent).toContain('a/b/package.json');
+  });
+
+  it('makes a cycle of package entries uncertain instead of looping', () => {
+    const resolver = new Resolver(new MemoryVfs({ 'p/package.json': '{"main":"sub"}', 'p/sub/package.json': '{"main":".."}', 'x.ts': '' }));
+    const result = resolver.resolve({ from: 'x.ts', specifier: './p', kind: 'static' });
+    expect(result).toMatchObject({ hubs: ['r:p'], uncertain: true });
+    expect(resolver.hub('r:p/sub').hubs).toContain('r:p');
+  });
+
+  it('refuses a key that names no hub', () => {
+    expect(() => new Resolver(new MemoryVfs({})).hub('f:x')).toThrow(/not a hub/);
+  });
+});
+
 describe('exportsTargets', () => {
   it.each([
     ['string sugar', './index.js', '.', ['./index.js']],
@@ -169,11 +265,15 @@ describe('evidence completeness (property)', () => {
   const DIRS = ['', 'a', 'a/b', 'a/x'];
   const NAMES = ['x', 'index', 'util'];
   const EXTS = ['', '.ts', '.js', '.json', '.mjs'];
-  const UNIVERSE = DIRS.flatMap((dir) => NAMES.flatMap((name) => EXTS.map((ext) => (dir === '' ? `${name}${ext}` : `${dir}/${name}${ext}`)))).filter(
-    (path) => !DIRS.includes(path),
-  );
-  const SPECIFIERS = ['./x', './x.js', '../x', '../x.ts', './index', '..', '.', '../b', '../../x', '/x', './util', '../x/util', './x/index', '../..', '../x/', './util/'];
+  // package.json files move the importer's package root, which a leading-slash path and the root
+  // mocks of a bare import resolve against (review finding L3).
+  const UNIVERSE = [
+    ...DIRS.flatMap((dir) => NAMES.flatMap((name) => EXTS.map((ext) => (dir === '' ? `${name}${ext}` : `${dir}/${name}${ext}`)))),
+    ...DIRS.map((dir) => (dir === '' ? 'package.json' : `${dir}/package.json`)),
+  ].filter((path) => !DIRS.includes(path));
+  const SPECIFIERS = ['./x', './x.js', '../x', '../x.ts', './index', '..', '.', '../b', '../../x', '/x', '/x.ts', '/a/x', './util', '../x/util', './x/index', '../..', '../x/', './util/'];
   const IMPORTER = 'a/b/f.ts';
+  const contentOf = (path: string) => (path.endsWith('package.json') ? '{}' : '');
 
   const covered = (result: Resolution, path: string): boolean =>
     result.targets.includes(path) ||
@@ -183,7 +283,7 @@ describe('evidence completeness (property)', () => {
     result.globs.some((glob) => glob.patterns !== undefined && matchGlobs([path], glob.patterns).length > 0);
 
   const resolveAs = (files: string[], specifier: string, kind: ImportKind): Resolution =>
-    new Resolver(new MemoryVfs(Object.fromEntries([...files, IMPORTER].map((f) => [f, ''])))).resolve({
+    new Resolver(new MemoryVfs(Object.fromEntries([...files, IMPORTER].map((f) => [f, contentOf(f)])))).resolve({
       from: IMPORTER,
       specifier,
       kind,
@@ -212,6 +312,40 @@ describe('evidence completeness (property)', () => {
             expect({ kind: after.kind, targets: after.targets }, `removing ${gone}`).toEqual({ kind: before.kind, targets: before.targets });
           }
         }
+      }),
+      { numRuns: 400 },
+    );
+  });
+
+  // The map keeps a resolution's evidence as its direct part plus edges to hubs, so the two must
+  // add up to exactly what the resolution recorded: nothing lost, nothing invented.
+  it.each(['static', 'url', 'mock'] as const)('splits a %s resolution into direct evidence and hubs without losing any', (kind) => {
+    const bare = ['lodash', 'x', '#x', '@s/p'];
+    fc.assert(
+      fc.property(fc.subarray(UNIVERSE, { maxLength: 12 }), fc.constantFrom(...SPECIFIERS, ...bare), (picked, specifier) => {
+        const files = picked.filter((path, _i, all) => all.every((other) => other === path || !other.startsWith(`${path}/`)) && coexists([], path));
+        const resolver = new Resolver(new MemoryVfs(Object.fromEntries([...files, IMPORTER].map((f) => [f, contentOf(f)]))));
+        const result = resolver.resolve({ from: IMPORTER, specifier, kind, patterns: null });
+        const sum = { targets: new Set(result.direct.targets), absent: new Set(result.direct.absent), dirs: new Set(result.direct.dirs), configs: new Set(result.direct.configs) };
+        const seen = new Set<string>();
+        const visit = (key: string): void => {
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          const hub = resolver.hub(key);
+          hub.targets.forEach((p) => sum.targets.add(p));
+          hub.absent.forEach((p) => sum.absent.add(p));
+          hub.dirs.forEach((p) => sum.dirs.add(p));
+          hub.configs.forEach((p) => sum.configs.add(p));
+          hub.hubs.forEach(visit);
+        };
+        result.hubs.forEach(visit);
+        const sorted = (set: Set<string>) => [...set].sort();
+        expect(sorted(sum.targets)).toEqual(result.targets);
+        expect(sorted(sum.absent).filter((p) => !sum.targets.has(p))).toEqual(result.absent);
+        expect(sorted(sum.dirs)).toEqual(result.dirs);
+        expect(sorted(sum.configs)).toEqual(result.configs);
       }),
       { numRuns: 400 },
     );

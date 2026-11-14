@@ -8,6 +8,11 @@
 // The map is a function of the tree, the config and the engine only (ADR-0003, DECISIONS 28). It
 // holds nothing about the machine that built it, so one tree gives the same bytes on every OS and
 // Node version; test/graph/golden.test.ts pins that.
+//
+// Probes shared by every importer of a path or a directory live in resolution hubs (ADR-0003,
+// DECISIONS 32). A hub node `r:<path>` or `c:<dir>` links to the files and configs that exist, and
+// its hash covers which of its candidates exist, so an absent candidate is no node at all. A plan
+// recomputes the hub at the head to compare it.
 import { createHash } from 'node:crypto';
 
 import { canonicalJson } from '../canonical-json.ts';
@@ -16,7 +21,7 @@ import type { ObjectFormat } from '../git/git.ts';
 import { dialectOf, lexImportsFromBytes, type ImportRecord } from '../lex/ts.ts';
 import { detectLockfile, LOCKFILE_PATHS, parseNpmLockfile, type NpmLockfile } from '../lockfile/npm.ts';
 import { matchGlobs } from '../resolve/glob.ts';
-import { dirname, Resolver, type Resolution, type Vfs } from '../resolve/resolver.ts';
+import { dirname, Resolver, type Hub, type Resolution, type Vfs } from '../resolve/resolver.ts';
 import { DECLARED, STATIC } from './graph.ts';
 
 /** The map format; a map of another version is invalid (L3). */
@@ -24,8 +29,9 @@ export const MAP_VERSION = 1;
 /**
  * What builds the graph and how a plan reads it; a map built by another engine is invalid (L3).
  * `trommel-static-2` has no `e:` nodes: a plan no longer compares the environment (DECISIONS 28).
+ * `trommel-static-3` has resolution hubs, whose hashes a plan recomputes (DECISIONS 32).
  */
-export const ENGINE = 'trommel-static-2';
+export const ENGINE = 'trommel-static-3';
 
 const MODULE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 /** `.d.ts`, `.d.mts`, `.d.cts` and arbitrary-extension declarations such as `.d.css.ts`. */
@@ -128,15 +134,84 @@ export function globHash(matches: readonly string[]): string {
   return sha256(canonicalJson([...matches].sort(compareStrings)));
 }
 
+/**
+ * The hash of an `r:` or `c:` hub: SHA-256 of what it recorded, each probed directory with its
+ * listing. Which candidates exist is in it, and what an existing one holds is left to the hub's
+ * edges, so editing a target or a config changes that file's node and not the hub.
+ */
+export function hubHash(index: TreeIndex, hub: Hub): string {
+  return sha256(
+    canonicalJson({
+      absent: hub.absent,
+      configs: hub.configs,
+      dirs: hub.dirs.map((dir) => [dir, listingHash(index, dir)]),
+      hubs: hub.hubs,
+      reason: hub.reason ?? null,
+      targets: hub.targets,
+      uncertain: hub.uncertain === true,
+    }),
+  );
+}
+
+/** Whether `key` names a resolution hub. */
+export function isHub(key: string): boolean {
+  return key.startsWith('r:') || key.startsWith('c:');
+}
+
+/**
+ * A hub that only found its own path as an existing file adds nothing that file's node does not
+ * already hold: the file's hash changes whenever the path stops being exactly that file.
+ */
+function isExactFile(hub: Hub): boolean {
+  return (
+    hub.key.startsWith('r:') &&
+    hub.targets.length === 1 &&
+    hub.targets[0] === hub.key.slice(2) &&
+    hub.absent.length === 0 &&
+    hub.dirs.length === 0 &&
+    hub.configs.length === 0 &&
+    hub.hubs.length === 0 &&
+    hub.reason === undefined &&
+    hub.uncertain !== true
+  );
+}
+
 class MapBuilder {
   readonly nodes = new Map<string, string | null>();
   readonly edges = new Map<string, Map<string, number>>();
   readonly globs = new Map<string, readonly string[]>();
   readonly causes = new Map<string, string[]>();
+  /** The node each hub key links to: the hub, or the file of an exact one. */
+  private readonly linked = new Map<string, string>();
   private readonly index: TreeIndex;
+  private readonly resolver: Resolver;
 
-  constructor(index: TreeIndex) {
+  constructor(index: TreeIndex, resolver: Resolver) {
     this.index = index;
+    this.resolver = resolver;
+  }
+
+  /** The node to link to for a hub, added with its edges the first time. */
+  hub(key: string): string {
+    const known = this.linked.get(key);
+    if (known !== undefined) {
+      return known;
+    }
+    const hub = this.resolver.hub(key);
+    if (isExactFile(hub)) {
+      const file = this.file(hub.targets[0]!);
+      this.linked.set(key, file);
+      return file;
+    }
+    this.linked.set(key, key); // before the sub-hubs, which may lead back here
+    this.node(key, hubHash(this.index, hub));
+    for (const path of [...hub.targets, ...hub.configs]) {
+      this.edge(key, this.file(path), STATIC);
+    }
+    for (const sub of hub.hubs) {
+      this.edge(key, this.hub(sub), STATIC);
+    }
+    return key;
   }
 
   node(key: string, hash: string | null): string {
@@ -181,7 +256,7 @@ export function buildStaticMap(input: StaticInput): TrommelMap {
   const { index, vfs } = input;
   const resolver = new Resolver(vfs);
   const lockfile = readLockfile(vfs);
-  const b = new MapBuilder(index);
+  const b = new MapBuilder(index, resolver);
   const files = vfs.files();
 
   // Packages first, so a missing dependency's ⊥ node can never shadow an installed one.
@@ -212,10 +287,7 @@ export function buildStaticMap(input: StaticInput): TrommelMap {
       throw new Error(`static graph: no source bytes for ${path}`);
     }
     const from = b.file(path);
-    const own = resolver.fileConfigs(path);
-    for (const config of [...own.configs, ...own.absent]) {
-      b.edge(from, b.file(config), STATIC);
-    }
+    b.edge(from, b.hub(`c:${dirname(path)}`), STATIC); // the file's own configs
     const lexed = lexImportsFromBytes(bytes, dialectOf(path));
     for (const diagnostic of lexed.diagnostics) {
       b.uncertain(path, `line ${diagnostic.line}: lexer ${diagnostic.code}`);
@@ -287,17 +359,15 @@ export function buildStaticMap(input: StaticInput): TrommelMap {
 }
 
 function addResolution(b: MapBuilder, from: string, path: string, record: ImportRecord, resolution: Resolution, lockfile: LockfileState): void {
-  for (const target of resolution.targets) {
-    b.edge(from, b.file(target), STATIC);
+  for (const key of resolution.hubs) {
+    b.edge(from, b.hub(key), STATIC);
   }
-  for (const absent of resolution.absent) {
-    b.edge(from, b.file(absent), STATIC);
+  const { direct } = resolution;
+  for (const file of [...direct.targets, ...direct.absent, ...direct.configs]) {
+    b.edge(from, b.file(file), STATIC);
   }
-  for (const dir of resolution.dirs) {
+  for (const dir of direct.dirs) {
     b.edge(from, b.dir(dir), STATIC);
-  }
-  for (const config of resolution.configs) {
-    b.edge(from, b.file(config), STATIC);
   }
   for (const glob of resolution.globs) {
     const key = glob.patterns === undefined ? `g:${glob.key}` : `g:glob:${glob.key}`;

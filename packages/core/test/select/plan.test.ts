@@ -49,7 +49,7 @@ describe('selectStatic', () => {
   it('selects the tests that reach a changed file, with a why-path from the test to the change', () => {
     const selection = plan(BASE, { ...BASE, 'src/b.ts': 'export const b = 2;\n' });
     expect(selection.changed).toEqual(['f:src/b.ts']);
-    expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'f:src/a.ts', 'f:src/b.ts'] }]);
+    expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b', 'f:src/b.ts'] }]);
     expect(selection.wouldSkip).toEqual(['test/c.test.ts', 'test/plain.test.ts']);
   });
 
@@ -61,15 +61,45 @@ describe('selectStatic', () => {
 
   it('selects importers of a probe that appears, which may shadow the old target', () => {
     const selection = plan(BASE, { ...BASE, 'src/b/index.ts': '' });
-    expect(selection.changed).toContain('d:src/b');
+    expect(selection.changed).toEqual(['r:src/b']);
+    expect(selection.escalations).toEqual([]);
+    expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b'] }]);
+  });
+
+  it('selects importers of a file that appears at a probed path, without escalating, though it is no module', () => {
+    const selection = plan(BASE, { ...BASE, 'src/b.json': '{}' });
+    expect(selection.changed).toEqual(['r:src/b']);
+    expect(selection.escalations).toEqual([]);
     expect(selected(selection)).toEqual(['test/a.test.ts']);
+  });
+
+  it('selects importers of a symlink whose missing target appears', () => {
+    const base = { ...BASE, 'src/b.ts': "import './link.ts';\n", 'src/link.ts': { mode: '120000' as const, content: 'real.ts' } };
+    const repo = (files: typeof base) => fakeRepo(files);
+    const selection = selectStatic(mapOf(repo(base)), headOf(repo({ ...base, 'src/real.ts': '' } as typeof base)), {});
+    expect(selection.changed).toEqual(['r:src/link.ts']);
+    expect(selected(selection)).toEqual(['test/a.test.ts']);
+  });
+
+  it('selects the files of a directory whose config chain changes, without escalating', () => {
+    const selection = plan(BASE, { ...BASE, 'src/tsconfig.json': '{}' });
+    expect(selection.changed).toEqual(['c:src']);
+    expect(selection.escalations).toEqual([]);
+    expect(selected(selection)).toEqual(['test/a.test.ts', 'test/c.test.ts']);
+  });
+
+  it('selects the files of a directory whose config changes, through its c: hub', () => {
+    const base = { ...BASE, 'tsconfig.json': '{}' };
+    const selection = plan(base, { ...base, 'tsconfig.json': '{"compilerOptions":{"strict":true}}' });
+    expect(selection.changed).toEqual(['f:tsconfig.json']);
+    expect(selection.affected.find((a) => a.test === 'test/plain.test.ts')?.path).toEqual(['f:test/plain.test.ts', 'c:test', 'f:tsconfig.json']);
   });
 
   it('always selects tests that reach an uncertain file', () => {
     const base = { ...BASE, 'src/b.ts': "import './nowhere';\n" };
     const selection = plan(base, base);
     expect(selection.uncertain).toEqual(['u:src/b.ts']);
-    expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'f:src/a.ts', 'f:src/b.ts', 'u:src/b.ts'] }]);
+    expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b', 'f:src/b.ts', 'u:src/b.ts'] }]);
   });
 
   it('selects importers of a package whose lockfile entry changed', () => {
@@ -110,7 +140,7 @@ describe('selectStatic', () => {
 
     it('selects its importers when a file below it changes', () => {
       const selection = plan(base, { ...base, 'src/data/deep/y.json': '2' });
-      expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'f:src/a.ts', 'f:src/data/deep/y.json'] }]);
+      expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'f:src/data/deep/y.json'] }]);
       expect(selection.escalations).toEqual([]);
     });
 
@@ -129,7 +159,7 @@ describe('selectStatic', () => {
     it('selects its importers when it appears, having been missing', () => {
       const missing = { ...BASE, 'src/a.ts': "export const data = new URL('./data/', import.meta.url);\n" };
       const selection = plan(missing, { ...missing, 'src/data/x.json': '1' });
-      expect(selection.affected.find((a) => a.test === 'test/a.test.ts')?.path).toEqual(['f:test/a.test.ts', 'f:src/a.ts', 'd:src/data']);
+      expect(selection.affected.find((a) => a.test === 'test/a.test.ts')?.path).toEqual(['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'd:src/data']);
     });
   });
 
@@ -168,10 +198,10 @@ describe('selectStatic', () => {
         { test: 'pkgs/db/test/db.test.ts', reason: `L1: ${cause}` },
       ]);
       // The why-path crosses into the escalated package; where it ends there is a tie-break among
-      // that package's nodes (a probe directory sorts before the source file).
+      // that package's nodes (a hub sorts after the files).
       const [api, db] = selection.forced;
-      expect(api!.path!.slice(0, 2)).toEqual(['f:pkgs/api/test/api.test.ts', 'f:pkgs/api/src/handler.ts']);
-      expect(api!.path!.at(-1)).toMatch(/^[fd]:pkgs\/db\//);
+      expect(api!.path!.slice(0, 3)).toEqual(['f:pkgs/api/test/api.test.ts', 'r:pkgs/api/src/handler', 'f:pkgs/api/src/handler.ts']);
+      expect(api!.path!.at(-1)).toMatch(/^[fdrc]:pkgs\/db\//);
       expect(db!.path).toEqual(['f:pkgs/db/test/db.test.ts']);
       expect(selection.wouldSkip).toEqual(['pkgs/cli/test/cli.test.ts', 'test/a.test.ts', 'test/c.test.ts', 'test/plain.test.ts']);
     });
@@ -187,6 +217,13 @@ describe('selectStatic', () => {
       const cause = 'pkgs/cli/src/main.ts changed and no test reaches it';
       expect(selection.escalations).toEqual([{ level: 'L1', scope: 'pkgs/cli', cause }]);
       expect(selection.forced).toEqual([{ test: 'pkgs/cli/test/cli.test.ts', reason: `L1: ${cause}`, path: ['f:pkgs/cli/test/cli.test.ts'] }]);
+    });
+
+    it('treats a changed hub that no test reaches as an unmapped input of the package its path lies in', () => {
+      const base = { ...WORKSPACES, 'pkgs/cli/src/main.ts': "import 'api';\nimport './helpers';\n", 'pkgs/cli/src/helpers.ts': '' };
+      const selection = plan(base, { ...base, 'pkgs/cli/src/helpers.js': '' });
+      expect(selection.escalations).toEqual([{ level: 'L1', scope: 'pkgs/cli', cause: 'r:pkgs/cli/src/helpers changed and no test reaches it' }]);
+      expect(selected(selection)).toEqual(['pkgs/cli/test/cli.test.ts']);
     });
 
     it('runs everything when the unreached module belongs to the root', () => {

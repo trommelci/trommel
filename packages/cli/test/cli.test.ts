@@ -74,7 +74,7 @@ describe('trommel graph, then plan', () => {
     const run = trommel(['plan', '--mode', 'shadow', '--static', '--map', '.trommel/map'], { GITHUB_OUTPUT: outputs, GITHUB_STEP_SUMMARY: summary });
     expect(run.status).toBe(0);
     const plan = JSON.parse(run.stdout) as Record<string, unknown>;
-    expect(plan['affected']).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'f:src/a.ts', 'f:src/b.ts'] }]);
+    expect(plan['affected']).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b', 'f:src/b.ts'] }]);
     expect(plan['wouldSkip']).toEqual([{ test: 'test/c.test.ts', label: 'unproven static reachability' }]);
     expect(plan['run']).toEqual(['test/a.test.ts', 'test/c.test.ts']);
     expect(plan['escalations']).toEqual([]);
