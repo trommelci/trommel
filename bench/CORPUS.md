@@ -101,11 +101,12 @@ The list lives in [`tools/corpus/repos.json`](../tools/corpus/repos.json). For e
 - PostHog alone was two-thirds of the runs.
 - Only 68 artifacts (0.2 MB, all meshery) matched the test-report pattern: the replay candidates upload no JUnit. Their value is the run, attempt and job history.
 
-**Collection so far (to the 2026-11-13 manifest).** The shares and oldest-days-first order (DECISIONS.md 21) took effect with the third run, collector `3c92385`.
-- Requests per run stay near 25,000: 24,581, 25,086, 26,079 and 23,978. Every run spent its 320-minute budget.
-- Work items still pending fell from 2,270 and 2,197 under the old collector to 1,082 and then 703.
-- After the fourth run, 11 of the 25 repositories have every day of the 87-day window (89 to 3 days ago). The slowest eight (AutoGPT, baserow, meshery, prettier, TanStack/query, lexical, luma.gl, vuejs/core) have 30 or 31 days, typescript-eslint 35, vite 36, trpc 49, svelte 50, zod 54 and babel 75.
-- The fourth run added 8 to 16 days to each of the slowest eight. At that pace, by estimate, the backlog clears in four to eight more daily runs: faster than the 2–3 weeks estimated from the first run. Collection goes oldest day first, so what is still missing is mostly the recent end of the window, the furthest from expiring.
+**Collection so far (to the 2026-11-14 manifest).** The shares and oldest-days-first order (DECISIONS.md 21) took effect with the third run, collector `3c92385`.
+- Requests per run stay near 25,000: 24,581, 25,086, 26,079, 23,978 and 24,934. Every run spent its 320-minute budget.
+- Work items still pending fell from 2,270 and 2,197 under the old collector to 1,082, 703 and then 407.
+- After the fifth run, 12 of the 25 repositories have every day of the 87-day window (89 to 3 days ago). The slowest six (AutoGPT, TanStack/query, baserow, lexical, prettier, luma.gl) have 48 days, vuejs/core 49, vite 50, meshery 52, svelte 66, trpc 75, and babel and typescript-eslint 85.
+- The fifth run added about 17 days to each of the slowest six. At that pace, by estimate, the backlog clears in about three more daily runs: faster than the 2–3 weeks estimated from the first run. Collection goes oldest day first, so what is still missing is mostly the recent end of the window, the furthest from expiring.
+- The fifth run, the first after the move to `trommelci`, mirrored no test-report archives; the fourth mirrored 15. The data is almost all run, attempt and job metadata, as the first run suggested.
 
 **Where the data lives.** It goes in a separate public repository, [trommelci/trommel-corpus](https://github.com/trommelci/trommel-corpus), created on 2026-11-11. Its template is in [`tools/corpus/corpus-repo/`](../tools/corpus/corpus-repo/README.md).
 - Daily manifests and the collector state are committed to git.

@@ -52,7 +52,7 @@ The raw output is in [results/2026-11-11-graph-win32.json](results/2026-11-11-gr
 This times what `trommel graph` and `trommel plan` do, against T6 (a 10,000-file TypeScript repository in under 30 s cold).
 - **CLI cold** is `trommel graph --out` in a fresh Node process: listing, blob reads, lexing, resolution, the map, serialization and the write. That is what CI pays.
 - **Stages** come from one more build in the same process: `lsTree`, `GitVfs.load` (config blobs), `readBlobs` (every source), `buildStaticMap` (lexing, resolution and edges) and canonical JSON.
-- **Plan** (synthetic repository only) times `parseMap`, the CSR build and `selectStatic` against a head commit that changes one file.
+- **Plan** (synthetic repository only) times `parseMap`, the CSR build and `selectStatic` against a head commit that changes one file. Since 2026-11-14 it also times `selectStatic` against a head that adds a file (`selectAddedMs`): a listing changes, so the plan recomputes every resolution hub (DECISIONS 32).
 
 Without an argument, the script builds a synthetic npm-workspaces monorepo with `git fast-import`: 20 packages × 25 modules × (19 sources + 1 test), 10,000 module files of about 4 KB each.
 - Each source file imports three siblings (extensionless, so every import probes), a file in the next module, the next workspace package and lodash, and has an `import type`.
@@ -64,9 +64,13 @@ Without an argument, the script builds a synthetic npm-workspaces monorepo with 
 | 2026-11-12 | synthetic | 10,023 | 42.1 | 106,390 | 684,501 | 26.7 MB | **2.5 s** | 2.5 s | 0.2 s + 0.57 s |
 | 2026-11-12 | Trommel at day 9 | 222 | 0.4 | 1,457 | 2,739 | 0.26 MB | 0.36 s | 0.06 s | — |
 | 2026-11-12 | honojs/hono at `f6fbaf02` (4.13.18) | 585 | 3.0 | 3,288 | 13,543 | 0.64 MB | 0.44 s | 0.10 s | — |
+| 2026-11-14 | synthetic, `main` at `65a5958` (before hubs) | 10,023 | 42.1 | 106,388 | 683,501 | 26.7 MB | 2.5 s | 2.6 s | 0.2 s + 0.63 s |
+| 2026-11-14 | synthetic, with hubs | 10,023 | 42.1 | 20,107 | 145,041 | 7.1 MB | **1.8 s** | 1.6 s | 0.06 s + 0.12 s; 0.30 s when a file is added |
+| 2026-11-14 | Trommel at `65a5958`, before hubs | 238 | — | 1,466 | 2,790 | 0.26 MB | 0.37 s | 0.06 s | — |
+| 2026-11-14 | Trommel at `65a5958`, with hubs | 238 | — | 514 | 1,044 | 0.14 MB | 0.37 s | 0.07 s | — |
 
-All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in [results/2026-11-12-static-graph-win32.json](results/2026-11-12-static-graph-win32.json), [results/2026-11-12-static-graph-trommel-win32.json](results/2026-11-12-static-graph-trommel-win32.json) and [results/2026-11-12-static-graph-hono-win32.json](results/2026-11-12-static-graph-hono-win32.json).
+All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in [results/](results/): the 2026-11-12 files, and for 2026-11-14 [static-graph-before-hubs](results/2026-11-14-static-graph-before-hubs-win32.json), [static-graph](results/2026-11-14-static-graph-win32.json), [static-graph-trommel-before-hubs](results/2026-11-14-static-graph-trommel-before-hubs-win32.json) and [static-graph-trommel](results/2026-11-14-static-graph-trommel-win32.json). The "before hubs" rows ran `main`'s own copy of this script on the same machine the same day, so the two pairs compare like with like.
 - **hono** was cloned with `--filter=blob:none`. At HEAD every blob is local. Building an older revision fetched its missing blobs one by one and took 18.7 s, which is network time, not Trommel's.
-- **T6 is met:** 2.5 s cold against 30 s, and against the 10 s goal. Incremental builds (under 3 s) are not measured yet; extraction is not cached across runs.
-- **Probe edges dominate,** as DECISIONS 17 expected: about 10 edges per extensionless import. They make the JSON map 26.7 MB at 10,000 files. SMAP v0 (still to do in M1) and per-directory probe groups are the levers.
-- **The plan** takes about 0.8 s on this map: 0.2 s to parse the JSON, then 0.57 s to select, of which rebuilding the CSR arrays is 0.46 s (timed separately as `graphMs`). M3's target is a plan p95 under 1 s at 10,000 files; SMAP decoding replaces both the parse and the rebuild.
+- **T6 is met:** 1.8 s cold against 30 s, and against the 10 s goal. Incremental builds (under 3 s) are not measured yet; extraction is not cached across runs.
+- **Probe edges dominated,** as DECISIONS 17 expected: about 10 edges per extensionless import, 26.7 MB of JSON at 10,000 files. Resolution hubs (DECISIONS 32) cut nodes by 81% and edges by 79%: 9,520 `r:` and 520 `c:` hubs replace 86,802 absent files and 9,541 absent directories. The map is 7.1 MB; SMAP v0 (still to do in M1) is the next lever.
+- **The plan** took about 0.8 s before hubs: 0.2 s to parse the JSON, then about 0.6 s to select, most of it rebuilding the CSR arrays (`graphMs`, 0.43 s). With hubs it takes 0.18 s for an edit (CSR rebuild 0.06 s), and 0.36 s when a file is added, since every hub is then recomputed at the head. M3's target is a plan p95 under 1 s at 10,000 files; SMAP decoding replaces both the parse and the rebuild.

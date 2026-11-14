@@ -6,8 +6,9 @@
 //   node bench/static-graph.ts <repo> [rev]   an existing repository at rev (default HEAD)
 //
 // "CLI cold" is `trommel graph --out` in a fresh Node process, which is what CI runs; the stage
-// timings come from one more in-process build. Prints canonical JSON; record results under
-// bench/results/.
+// timings come from one more in-process build. On the synthetic repository the plan is timed twice:
+// against a head that edits one file, and against one that adds a file, which makes the plan
+// recompute every resolution hub. Prints canonical JSON; record results under bench/results/.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { cpus, platform, release, tmpdir } from 'node:os';
@@ -60,7 +61,7 @@ function body(seed: number): string {
  * (extensionless, so every import probes), one file in another module, another workspace package
  * and lodash; each test imports its module's first file. A second commit changes one file.
  */
-function syntheticRepo(): { dir: string; base: string; head: string } {
+function syntheticRepo(): { dir: string; base: string; head: string; added: string } {
   const dir = mkdtempSync(join(tmpdir(), 'trommel-bench-graph-'));
   git(dir, ['init', '-q', '-b', 'main']);
   const files = new Map<string, string>();
@@ -103,8 +104,21 @@ function syntheticRepo(): { dir: string; base: string; head: string } {
   const changed = `${files.get('packages/p3/src/m4/f5.ts')!}\nexport const changed = 1;\n`;
   lines.push('blob', `mark :${++mark}`, `data ${Buffer.byteLength(changed)}`, changed);
   commit('refs/heads/one', base, [`M 100644 :${mark} packages/p3/src/m4/f5.ts`]);
+  // A file that appears changes a listing, so the plan recomputes every resolution hub (DECISIONS 32).
+  const added = 'export const added = 1;\n';
+  lines.push('blob', `mark :${++mark}`, `data ${Buffer.byteLength(added)}`, added);
+  commit('refs/heads/added', base, [`M 100644 :${mark} packages/p3/src/m4/f5.js`]);
   git(dir, ['fast-import', '--quiet'], `${lines.join('\n')}\n`);
-  return { dir, base: 'main', head: 'one' };
+  return { dir, base: 'main', head: 'one', added: 'added' };
+}
+
+function countKinds(keys: readonly string[]): Record<string, number> {
+  const kinds: Record<string, number> = {};
+  for (const key of keys) {
+    const kind = key.slice(0, key.indexOf(':'));
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+  }
+  return kinds;
 }
 
 const round = (ms: number) => Math.round(ms);
@@ -152,7 +166,20 @@ try {
     const head = TreeIndex.build(await lsTree(dir, headRev));
     const headVfs = await GitVfs.load(dir, head);
     const select = await time(() => selectStatic(parse.result, { objectFormat, index: head, vfs: headVfs, tests, config: null }, {}));
-    plan = { parseMs: parse.ms, graphMs: graph.ms, selectMs: select.ms, affected: select.result.affected.length, graphNodes: graph.result.nodeCount };
+    const addedIndex = TreeIndex.build(await lsTree(dir, synthetic!.added));
+    const addedVfs = await GitVfs.load(dir, addedIndex);
+    const selectAdded = await time(() => selectStatic(parse.result, { objectFormat, index: addedIndex, vfs: addedVfs, tests, config: null }, {}));
+    plan = {
+      parseMs: parse.ms,
+      graphMs: graph.ms,
+      selectMs: select.ms,
+      affected: select.result.affected.length,
+      graphNodes: graph.result.nodeCount,
+      // A head that adds a file: every hub is recomputed.
+      selectAddedMs: selectAdded.ms,
+      affectedAdded: selectAdded.result.affected.length,
+      changedAdded: selectAdded.result.changed.length,
+    };
   }
 
   const report = {
@@ -163,6 +190,7 @@ try {
     sourceMB: Math.round((sourceBytes / 1e6) * 10) / 10,
     tests: tests.length,
     nodes: Object.keys(map.nodes).length,
+    nodesByKind: countKinds(Object.keys(map.nodes)),
     edges,
     uncertainFiles: Object.keys(map.uncertain).length,
     mapBytes,
