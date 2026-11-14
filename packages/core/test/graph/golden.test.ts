@@ -16,8 +16,8 @@ import { buildStaticMap, ENGINE } from '../../src/graph/static.ts';
 import { fakeRepo } from './fake-repo.ts';
 
 const GOLDEN = {
-  engine: 'trommel-static-2',
-  sha256: '6ef757a62c02c3814929bf0afe9f796707706b5565fc0b5c9f6c3be4edd14aa1',
+  engine: 'trommel-static-3',
+  sha256: 'd648c8388ae3cd20ecfcf487d1dbcda9457b447217f93ff976da497a7d806811',
 } as const;
 
 const LOCK = JSON.stringify({
@@ -57,9 +57,11 @@ const repo = fakeRepo({
   'src/dynamic.ts': 'export const load = (name: string) => import(name);\n',
   'src/absent.ts': "import 'not-installed';\n",
   'src/link.ts': { mode: '120000', content: 'b.ts' },
+  'src/vendor/package.json': '{"main":"main.js"}\n',
+  'src/vendor/main.js': 'module.exports = 2;\n',
   [`src/${FACE}.ts`]: `import './${TILDE}';\n`,
   [`src/${TILDE}.ts`]: 'export {};\n',
-  'test/a.test.ts': "import '../src/a';\n",
+  'test/a.test.ts': "import '../src/a';\nimport '../src/vendor';\n",
   'test/pages.test.ts': "import '../src/pages';\nimport '../src/assets';\n",
   'test/payments.test.ts': "import '../src/dynamic';\nimport '../src/absent';\n",
   'test/unicode.test.ts': `import '../src/${FACE}';\nimport '../src/link';\n`,
@@ -84,15 +86,22 @@ describe('the golden map', () => {
       const kind = key.slice(0, key.indexOf(':'));
       kinds[kind] = (kinds[kind] ?? 0) + 1;
     }
-    expect(kinds).toEqual({ d: 18, f: 183, g: 5, p: 6, u: 2 });
+    expect(kinds).toEqual({ c: 7, d: 3, f: 28, g: 5, p: 6, r: 17, u: 2 });
   });
 
   it('covers an uncertain file, absent paths and both provenances, so the hash pins each', () => {
     expect(Object.keys(map.uncertain)).toEqual(['u:src/absent.ts', 'u:src/dynamic.ts']);
-    expect(map.nodes['f:src/b.js']).toBeNull();
+    expect(map.nodes['f:pnpm-workspace.yaml']).toBeNull();
     expect(map.nodes['p:npm:node_modules/gone']).toBeNull();
     const provenances = new Set(Object.values(map.edges).flatMap((out) => Object.values(out)));
     expect([...provenances].sort()).toEqual([STATIC, DECLARED]);
+  });
+
+  it('covers both kinds of hub: a package directory with a sub-hub and an exact entry, and config chains', () => {
+    expect(map.edges['r:src/vendor']).toEqual({ 'f:src/vendor/main.js': STATIC, 'f:src/vendor/package.json': STATIC, 'r:src/vendor/index': STATIC });
+    expect('r:src/vendor/main.js' in map.nodes).toBe(false);
+    expect(map.edges['c:src']).toEqual({ 'f:package.json': STATIC, 'f:tsconfig.json': STATIC });
+    expect(map.nodes['f:src/b.js']).toBeUndefined(); // an absent candidate lives in its hub's hash
   });
 
   it('has the pinned bytes, whatever machine built it', () => {

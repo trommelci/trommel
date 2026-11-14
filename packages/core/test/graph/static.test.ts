@@ -64,10 +64,17 @@ describe('buildStaticMap', () => {
     expect(map.uncertain).toEqual({});
   });
 
-  it('hashes files by blob id, absent paths as null', () => {
+  it('hashes files by blob id, and an absent path outside every hub as null', () => {
     expect(map.nodes['f:src/b.ts']).toBe(repo.vfs.oid('src/b.ts'));
-    expect(map.nodes['f:src/b.js']).toBeNull();
-    expect(map.nodes['d:src/b']).toBeNull();
+    expect(map.nodes['f:pnpm-workspace.yaml']).toBeNull(); // a bare import's workspace lookup
+  });
+
+  it("keeps a resolution's probes in its hub's hash, not as nodes", () => {
+    expect('f:src/b.js' in map.nodes).toBe(false);
+    expect('d:src/b' in map.nodes).toBe(false);
+    expect('f:src/package.json' in map.nodes).toBe(false);
+    expect(map.nodes['r:src/b']).toMatch(/^[0-9a-f]{64}$/);
+    expect(map.nodes['c:src']).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('adds every module file as a node, even one nothing imports, and never non-module files', () => {
@@ -76,30 +83,65 @@ describe('buildStaticMap', () => {
     expect('f:docs/guide.md' in map.nodes).toBe(false);
   });
 
-  it('records every resolution as STATIC edges: targets, absent probes and directories', () => {
-    const a = edgesFrom(map, 'f:src/a.ts');
-    expect(a['f:src/b.ts']).toBe(STATIC);
-    expect(a['f:src/b.js']).toBe(STATIC);
-    expect(a['d:src/b']).toBe(STATIC);
-    expect(edgesFrom(map, 'f:test/a.test.ts')['f:src/a.ts']).toBe(STATIC);
+  it('gives an import one STATIC edge, to the r: hub of the path it resolves, which links to what exists', () => {
+    expect(edgesFrom(map, 'f:src/a.ts')['r:src/b']).toBe(STATIC);
+    expect(edgesFrom(map, 'f:src/a.ts')['f:src/b.ts']).toBeUndefined();
+    expect(edgesFrom(map, 'r:src/b')).toEqual({ 'f:src/b.ts': STATIC });
+    expect(edgesFrom(map, 'f:test/a.test.ts')['r:src/a']).toBe(STATIC);
+    expect(edgesFrom(map, 'r:src/a')).toEqual({ 'f:src/a.ts': STATIC });
+  });
+
+  it('links an import of a path that exists exactly to the file itself, with no hub', () => {
+    const exact = build(fakeRepo({ 'src/a.ts': "import './b.ts';\n", 'src/b.ts': '' }));
+    expect(edgesFrom(exact, 'f:src/a.ts')['f:src/b.ts']).toBe(STATIC);
+    expect('r:src/b.ts' in exact.nodes).toBe(false);
+  });
+
+  it('keeps the hub of a symlink whose target is missing, since the target may appear', () => {
+    const dangling = build(fakeRepo({ 'src/a.ts': "import './link.ts';\n", 'src/link.ts': { mode: '120000', content: 'real.ts' } }));
+    expect(edgesFrom(dangling, 'f:src/a.ts')['r:src/link.ts']).toBe(STATIC);
+    expect(edgesFrom(dangling, 'r:src/link.ts')).toEqual({ 'f:src/link.ts': STATIC });
+  });
+
+  it('hashes a hub by which of its candidates exist, and leaves contents to the edges', () => {
+    const files = { 'src/a.ts': "import './b';\n", 'src/b.ts': 'export {};\n' };
+    const hub = (extra: Record<string, string>) => build(fakeRepo({ ...files, ...extra })).nodes['r:src/b'];
+    expect(hub({ 'src/b.ts': 'export const b = 2;\n' })).toBe(hub({}));
+    expect(hub({ 'src/b.js': '' })).not.toBe(hub({}));
+    expect(hub({ 'src/b/index.ts': '' })).not.toBe(hub({}));
+    expect(hub({ 'src/other.ts': '' })).toBe(hub({}));
+  });
+
+  it("hashes a probed directory's listing into its hub, as its d: node was before", () => {
+    const files = { 'src/a.ts': "import './d';\n", 'src/d/index.ts': '' };
+    const hub = (extra: Record<string, string>) => build(fakeRepo({ ...files, ...extra })).nodes['r:src/d'];
+    expect(hub({ 'src/d/other.ts': '' })).not.toBe(hub({}));
   });
 
   it('skips statement-level type imports but keeps inline ones, which still evaluate the module', () => {
     const a = edgesFrom(map, 'f:src/a.ts');
-    expect(a['f:src/types.ts']).toBeUndefined();
-    expect(a['f:src/types2.ts']).toBe(STATIC);
+    expect(a['r:src/types']).toBeUndefined();
+    expect(a['r:src/types2']).toBe(STATIC);
   });
 
   it('never lexes declaration files', () => {
     expect(map.edges['f:src/decl.d.ts']).toBeUndefined();
   });
 
-  it("gives every source file edges to its own configs and the misses above them", () => {
-    const a = edgesFrom(map, 'f:src/a.ts');
-    expect(a['f:tsconfig.json']).toBe(STATIC);
-    expect(a['f:package.json']).toBe(STATIC);
-    expect(a['f:src/package.json']).toBe(STATIC);
-    expect(a['f:src/tsconfig.json']).toBe(STATIC);
+  it("gives every source file one edge to its directory's c: hub, which links to the configs that exist", () => {
+    expect(edgesFrom(map, 'f:src/a.ts')['c:src']).toBe(STATIC);
+    expect(edgesFrom(map, 'f:src/b.ts')['c:src']).toBe(STATIC);
+    expect(edgesFrom(map, 'c:src')).toEqual({ 'f:package.json': STATIC, 'f:tsconfig.json': STATIC });
+    expect(edgesFrom(map, 'f:test/a.test.ts')['c:test']).toBe(STATIC);
+    expect(edgesFrom(map, 'f:src/a.ts')['f:tsconfig.json']).toBeUndefined();
+  });
+
+  it("hashes a c: hub by which configs exist on the way up, so a new tsconfig.json changes it", () => {
+    const files = { 'package.json': '{}', 'src/a.ts': '' };
+    const hub = (extra: Record<string, string>) => build(fakeRepo({ ...files, ...extra })).nodes['c:src'];
+    expect(hub({ 'package.json': '{"type":"module"}' })).toBe(hub({}));
+    expect(hub({ 'src/tsconfig.json': '{}' })).not.toBe(hub({}));
+    expect(hub({ 'src/package.json': '{}' })).not.toBe(hub({}));
   });
 
   it('maps a bare import to its lockfile location and packages to their dependencies', () => {
@@ -116,8 +158,8 @@ describe('buildStaticMap', () => {
     expect(map.globs['g:inputs.global']).toEqual(['package.json', '.env*']);
   });
 
-  it('holds nothing about the machine that built it: every node is a file, listing, glob or package', () => {
-    expect(Object.keys(map.nodes).filter((key) => !/^[fdgp]:/.test(key))).toEqual([]);
+  it('holds nothing about the machine that built it: every node is a file, listing, glob, package or hub', () => {
+    expect(Object.keys(map.nodes).filter((key) => !/^[fdgprc]:/.test(key))).toEqual([]);
   });
 
   it('hashes a directory listing by names and kinds, not contents', () => {
@@ -186,7 +228,8 @@ describe('globs and declared inputs', () => {
   it('makes a bare import depend on the workspaces node', () => {
     const map = build(fakeRepo({ 'package.json': '{"name":"r","workspaces":["pkgs/*"]}', 'pkgs/p/package.json': '{"name":"p"}', 'pkgs/p/index.js': '', 'src/a.ts': "import 'p';\n" }));
     expect(edgesFrom(map, 'f:src/a.ts')['g:workspaces']).toBe(STATIC);
-    expect(edgesFrom(map, 'f:src/a.ts')['f:pkgs/p/index.js']).toBe(STATIC);
+    expect(edgesFrom(map, 'f:src/a.ts')['r:pkgs/p/index']).toBe(STATIC);
+    expect(edgesFrom(map, 'r:pkgs/p/index')).toEqual({ 'f:pkgs/p/index.js': STATIC });
     expect(edgesFrom(map, 'f:src/a.ts')['f:pkgs/p/package.json']).toBe(STATIC);
     expect('g:workspaces' in map.globs).toBe(false);
   });

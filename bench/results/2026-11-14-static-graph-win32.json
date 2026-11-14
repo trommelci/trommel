@@ -1,0 +1,44 @@
+{
+  "benchmark": "static-graph",
+  "cliColdMs": 1785,
+  "edges": 145041,
+  "environment": {
+    "cpu": "AMD Ryzen AI 7 350 w/ Radeon 860M",
+    "git": "git version 2.55.0.windows.2",
+    "node": "v26.4.0",
+    "os": "win32 10.0.26200"
+  },
+  "files": 10023,
+  "lexedFiles": 10000,
+  "mapBytes": 7069026,
+  "nodes": 20107,
+  "nodesByKind": {
+    "c": 520,
+    "d": 21,
+    "f": 10023,
+    "g": 2,
+    "p": 21,
+    "r": 9520
+  },
+  "plan": {
+    "affected": 500,
+    "affectedAdded": 500,
+    "changedAdded": 1,
+    "graphMs": 61,
+    "graphNodes": 20107,
+    "parseMs": 63,
+    "selectAddedMs": 302,
+    "selectMs": 116
+  },
+  "repo": "synthetic: 20 packages x 25 modules x (19 sources + 1 test)",
+  "sourceMB": 42.1,
+  "stagesMs": {
+    "buildStaticMap": 1643,
+    "gitVfsLoad": 32,
+    "lsTree": 59,
+    "readBlobs": 274,
+    "serialize": 79
+  },
+  "tests": 500,
+  "uncertainFiles": 0
+}

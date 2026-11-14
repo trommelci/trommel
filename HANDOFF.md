@@ -1,7 +1,7 @@
 # Hand-off: Trommel milestone M1, after roadmap day 10
 
 - **Written:** 2026-11-11 (UTC), at `main` = `00fea91` plus this document.
-- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 and 2 of its worklist are done: the selector backstops (DECISIONS 29) and the environment out of the map (DECISIONS 28). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met.
+- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met.
 - **For:** whoever continues the implementation, person or agent.
 - **Reading order:** this file, then [DECISIONS.md](DECISIONS.md), then the docs it points to.
 
@@ -42,9 +42,15 @@
   - Every identifier changed with the name: the `trommel` command, `@trommel/*` packages, `trommel.config.json`, `.trommel/map`, `TROMMEL_*` variables, `trommel.yml` with its `trommel-gate` job, and the engine id `trommel-static-2`. The golden hash moved with the engine id and nothing else. DECISIONS 30 maps every old name to the new one.
   - The repositories move to the `trommelci` organisation as `trommelci/trommel` and `trommelci/trommel-corpus`. Ojas renames and transfers both, and then the two rename PRs merge. The corpus repository calls this repository's reusable workflow by its new path.
   - **Expect one run-all plan** on each branch until a push to `main` caches a `trommel-map-*` map. Maps cached under the old key are not restored.
+- **Resolution hubs (2026-11-14, branch `m1/resolution-hubs`, DECISIONS 32):**
+  - Probes shared by every importer of one path (`r:`) or one directory's config chain (`c:`) are one hub node each, whose hash covers which candidates exist. An absent candidate is no node at all. A plan recomputes the hubs at the head when a listing changed.
+  - At 10,000 files the map goes from 106,388 nodes, 683,501 edges and 26.7 MB to 20,107, 145,041 and 7.1 MB. On this repository's last 70 commits the selections are identical to `main`'s.
+  - The review's finding L3 is fixed with it: the package-root lookup is now recorded evidence.
+  - The engine is `trommel-static-3`, so **expect one run-all plan** wherever a cached `trommel-static-2` map meets the new planner, this change's own PR included.
+  - 500 tests pass in 31 files.
 
 **First four things to do:**
-1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 and 2 of its worklist are done.
+1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 3 of its worklist are done.
 2. Check that the collector is making progress (§5.3): coverage should grow with each daily run.
 3. Start the rest of M1 (§8), in the order §1.1 gives. Every PR now shows Trommel's shadow summary: read it, and record any would-skip that should have run.
 4. Take the open decisions to Ojas (§10).
@@ -72,8 +78,8 @@
 
 1. ~~**Selector backstops** (`core/select/plan.ts`).~~ Done on 2026-11-14 (DECISIONS 29). An unmapped input makes every node of its owning package changed, and a changed node that no test reaches is one. The owning package is the deepest workspace member, not the nearest `package.json`, which closed a hole: a fixture repository with its own `package.json` had been a package with no tests. `inputs.ignore` covers both kinds, and the summary lists what it exempted. On this repository's last 70 commits the rule fired on 3, each within one package.
 2. ~~**Environment out of the map** (`core/graph/static.ts`).~~ Done on 2026-11-14 (DECISIONS 28). The `e:` nodes are gone from the map and from static selection, the engine id is `trommel-static-2`, and `golden.test.ts` pins a fixture map's SHA-256 on every CI OS. When a later item changes that hash, it must also say whether the engine id changes.
-3. **Resolution hubs** (`core/resolve`, `core/graph/static.ts`). Probes are 84% of edges at 10,000 files. The soundness property in `plan.test.ts` is the regression test, because its oracle shares no graph code.
-4. **SMAP v0:** the container, the snapshot layer and the static layer only. The record layer is a new section in M3.
+3. ~~**Resolution hubs** (`core/resolve`, `core/graph/static.ts`).~~ Done on 2026-11-14 (DECISIONS 32). `r:<path>` and `c:<dir>` hubs hold the probes every importer shares, so nodes fall 81% and edges 79% at 10,000 files, and selections on this repository's last 70 commits are unchanged. The review's finding L3 is fixed with it. The engine is `trommel-static-3`, and the golden hash moved with it.
+4. **SMAP v0:** the container, the snapshot layer and the static layer only. The record layer is a new section in M3. This is next. Hub nodes are ordinary nodes to it: a key and a hash.
 5. **M2:** the record schema of ADR-0005, three capture scopes, the runner's reported configuration, and resolution evidence for non-literal imports.
 6. **M3:** `trommel run` with discovery reconciliation and the per-shard environment and tree check; base-free proofs; the Lite-mode key layout, `cache-mode` and origin check.
 
@@ -81,7 +87,7 @@
 - four dependencies the static extractor drops without flagging them (M6);
 - K1's wording, and the logs the collector does not keep (M7);
 - `generated` rules, which decide the savings on most of the corpus (M8);
-- six low-severity items (L2–L7). L1, the `u:` seeds, is fixed (DECISIONS 29).
+- five low-severity items (L2 and L4–L7). L1, the `u:` seeds, is fixed (DECISIONS 29), and so is L3, the unrecorded package-root lookup (DECISIONS 32).
 
 **One number to distrust.** The review measured `main` at `86a995e`. Day 10 and the fix of DECISIONS 26 merged after it, so its counts for this repository (1,461 nodes, 2,777 edges, 28 tests) are a day old. Its line citations were refreshed to `main` at `acf76c2`.
 
@@ -140,7 +146,7 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `473 passed` from `npm test` (after DECISIONS 29), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `500 passed` from `npm test` (after DECISIONS 32), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
@@ -162,14 +168,14 @@ node packages/cli/src/main.ts plan --mode shadow --static --map .trommel/map
 | `packages/core/src/git/git.ts` | Runs git: `lsTree` (`ls-tree -r -t -z --full-tree`) and `readObjectFormat` | `lsTree(cwd, rev)`, `readObjectFormat(cwd)` | `test/git/git.test.ts` (9, differential against `git diff-tree`) |
 | `packages/core/src/lex/ts.ts` | Import lexer for `.ts`, `.tsx` and JS: 12 record kinds, `typeOnly` and `inlineTypeOnly`, non-literal specifiers as `null`, diagnostics that mark a file uncertain | `lexImports(source, dialect)`, `lexImportsFromBytes`, `dialectOf(path)` | `test/lex/golden.test.ts` (20), `test/lex/lexer.test.ts` (17); fixtures in `test/fixtures/lex/` |
 | `packages/core/src/graph/graph.ts` | CSR graph: nodes numbered in sorted-name order; `STATIC`/`DYNAMIC`/`DECLARED` provenance bits; multi-source reverse BFS; forward reach; why-paths | `GraphBuilder.addNode/addEdge/build`, `reverseReach`, `forwardReach`, `whyPath` | `test/graph/graph.test.ts` (P1, P3, forward reach, why-paths, determinism) |
-| `packages/core/src/resolve/resolver.ts` | Resolution over a `Vfs`, the git view of a snapshot. Probes the union of TypeScript, Vite and Jest candidate orders, and records targets, absent paths, `d:` directories, configs and `g:` sets. Covers tsconfig `paths`/`baseUrl`/`extends`, `exports`/`imports`, workspaces, `__mocks__` and symlinks | `Resolver.resolve({from, specifier, kind, patterns?, base?})`, `Resolver.workspaces()`, `Resolver.ownerDir()` (nearest `package.json`, for resolution), `Resolver.packageOf()` (deepest workspace member, for escalations), `MemoryVfs`, `exportsTargets`, `joinPath`, `dirname` | `test/resolve/resolver.test.ts` (71: fixtures, `fileConfigs`, `packageOf`, plus the evidence-completeness properties); fixtures in `test/fixtures/resolve/` |
+| `packages/core/src/resolve/resolver.ts` | Resolution over a `Vfs`, the git view of a snapshot. Probes the union of TypeScript, Vite and Jest candidate orders, and records targets, absent paths, `d:` directories, configs and `g:` sets. Covers tsconfig `paths`/`baseUrl`/`extends`, `exports`/`imports`, workspaces, `__mocks__` and symlinks. Evidence that depends on one path or one directory is an `r:` or `c:` hub, worked out once and shared (DECISIONS 32); a `Resolution` lists everything plus its `hubs` and its `direct` part | `Resolver.resolve({from, specifier, kind, patterns?, base?})`, `Resolver.hub(key)`, `Resolver.fileConfigs()`, `Resolver.workspaces()`, `Resolver.ownerDir()` (nearest `package.json`, for resolution), `Resolver.packageOf()` (deepest workspace member, for escalations), `MemoryVfs`, `exportsTargets`, `joinPath`, `dirname` | `test/resolve/resolver.test.ts` (fixtures, hubs, `fileConfigs`, `packageOf`, plus the evidence-completeness and hub-split properties); fixtures in `test/fixtures/resolve/` |
 | `packages/core/src/resolve/{jsonc,yaml,glob}.ts` | JSONC (tsconfig), the pnpm-workspace YAML subset, globs | `parseJsonc`, `parsePnpmWorkspace`, `globToRegExp`, `escapeGlob` | `test/resolve/formats.test.ts` (34) |
 | `packages/core/src/lockfile/npm.ts` | package-lock v2/v3 → `p:npm:<install location>`. Node-style `locate`, package-to-package dependencies, diff, lockfile detection; other formats are `unparseable` (L3) | `parseNpmLockfile`, `NpmLockfile.locate/dependencies`, `diffLockfiles`, `detectLockfile` | `test/lockfile/npm.test.ts` (16) |
 | `packages/core/src/index.ts` | The package's public exports. Workspace packages export `./src/*.ts` directly (DECISIONS 3) | — | — |
 | `packages/core/src/git/{cat-file,vfs}.ts` | `git cat-file --batch` parser; `GitVfs`, the resolver's `Vfs` over a `TreeIndex` with blobs from git | `readBlobs(cwd, oids)`, `CatFileParser`, `GitVfs.load`, `repoRoot` | `test/git/cat-file.test.ts`, `test/git/vfs.test.ts`, `test/git/git.test.ts` |
-| `packages/core/src/graph/{static,map}.ts` | The static graph builder and the M1 map (canonical JSON): node keys and hashes, edges, `u:` nodes (DECISIONS 23). A function of the tree, the config and the engine only (DECISIONS 28) | `buildStaticMap`, `ENGINE`, `parseMap`, `mapGraph`, `readLockfile`, `isModule`/`isLexed` | `test/graph/static.test.ts`, `test/graph/map.test.ts`, `test/graph/golden.test.ts` (the pinned fixture hash) |
+| `packages/core/src/graph/{static,map}.ts` | The static graph builder and the M1 map (canonical JSON): node keys and hashes, edges, `u:` nodes (DECISIONS 23), `r:` and `c:` hubs (DECISIONS 32). A function of the tree, the config and the engine only (DECISIONS 28) | `buildStaticMap`, `ENGINE`, `hubHash`, `isHub`, `parseMap`, `mapGraph`, `readLockfile`, `isModule`/`isLexed` | `test/graph/static.test.ts`, `test/graph/map.test.ts`, `test/graph/golden.test.ts` (the pinned fixture hash) |
 | `packages/core/src/environment.ts` | Environment components for the M2 recorder: runtime, platform and tracked variables. No caller yet, and lint keeps it out of the graph and selection modules (DECISIONS 28) | `environment`, `envHash` | `test/environment.test.ts` (6) |
-| `packages/core/src/select/plan.ts` | Δ(S,H) from a map to a head snapshot, escalations L1/L3, reverse BFS with why-paths (DECISIONS 24). Unmapped inputs seed their owning package (DECISIONS 29) | `selectStatic`, `runAll` | `test/select/plan.test.ts` (examples plus the 2,000-run soundness property) |
+| `packages/core/src/select/plan.ts` | Δ(S,H) from a map to a head snapshot, escalations L1/L3, reverse BFS with why-paths (DECISIONS 24). Unmapped inputs seed their owning package (DECISIONS 29). Hubs are recomputed at H when a listing changed (DECISIONS 32) | `selectStatic`, `runAll` | `test/select/plan.test.ts` (examples plus the 2,000-run soundness property) |
 | `packages/cli/src/` | `trommel graph`, `diff`, `plan`: `args.ts` (parseArgs, kickoff gap 1), `config.ts` (§5.1 validation, test discovery), `report.ts` (plan JSON, matrix, summary), `cli.ts`, `main.ts`. `bin: trommel` | `node packages/cli/src/main.ts --help` | `test/{args,config,report,cli}.test.ts` (`cli.test.ts` is end to end) |
 | `packages/vitest`, `packages/jest` | Placeholders for M2 | — | — |
 | `tools/corpus/` | The corpus collector (§5). `repos.json` lists the repositories; `corpus-repo/` is the template for the data repo | `node tools/corpus/src/main.ts …` | `tools/corpus/test/*` (50) |
@@ -223,7 +229,7 @@ The data is the flake ground truth (T3) and the durations for the replay corpus.
 
 **The fix**, in DECISIONS 21, has three parts: oldest days first, per-repository shares, and PostHog dropped. It takes effect on the first run that starts after it reached `main` here; check that run's manifest the same way.
 
-**Scheduled runs.** The 03:17 UTC runs for 2026-11-12 and 2026-11-13 both fired about eight hours late: 43207509015 at 11:15 UTC, still on the old collector, and 43413524405 at 11:00 UTC. GitHub can delay or drop scheduled runs. If they go missing, start runs by hand with `gh workflow run collect.yml --repo trommelci/trommel-corpus`.
+**Scheduled runs.** The 03:17 UTC runs for 2026-11-12, 2026-11-13 and 2026-11-14 fired seven to eight hours late: 43207509015 at 11:15 UTC, still on the old collector, 43413524405 at 11:00 UTC and 43585418375 at 10:28 UTC. GitHub can delay or drop scheduled runs. If they go missing, start runs by hand with `gh workflow run collect.yml --repo trommelci/trommel-corpus`.
 
 **Pushing to trommel-corpus during a run no longer loses it.**
 - In the first two runs, the publish step committed and pushed without pulling first. A concurrent push (a `collector.ref` bump, for instance) would have made its push fail and lost that run's manifest and state, although the release assets would still have been published. Neither run was hit.
@@ -255,7 +261,7 @@ gh api repos/trommelci/trommel-corpus/contents/manifests/2026 --jq '.[].name'
 - So each run should cover about 6 days of history, and the coverage should net about 5 days a day while the oldest day expires.
 - Expect the backlog to clear within 2–3 weeks. The manifest's `coverage` makes those losses visible.
 
-**Measured, to the 2026-11-13 manifest** (also in [bench/CORPUS.md](bench/CORPUS.md)). Collection is faster than the estimate:
+**Measured, to the 2026-11-14 manifest** (also in [bench/CORPUS.md](bench/CORPUS.md)). Collection is faster than the estimate:
 
 | Run | Collector | Requests | Items done | Pending after | Repositories with all days |
 |---|---|---|---|---|---|
@@ -263,10 +269,13 @@ gh api repos/trommelci/trommel-corpus/contents/manifests/2026 --jq '.[].name'
 | 2, 2026-11-12 (43207509015) | old | 25,086 | 117 | 2,197 | 0 of 26 |
 | 3, 2026-11-12, by hand (43289738736) | fixed, `3c92385` | 26,079 | 1,142, plus 13 capped and 1 error | 1,082 | 8 of 25 |
 | 4, 2026-11-13 (43413524405) | fixed, `3c92385` | 23,978 | 416, plus 7 capped | 703 | 11 of 25 |
+| 5, 2026-11-14 (43585418375) | fixed, `65a5958` | 24,934 | 343, plus 6 capped | 407 | 12 of 25 |
 
-- Every run spent its 320-minute budget and stopped one item partway through (`stoppedEarly`: time budget spent).
-- After run 4, 11 repositories have all 87 days. The slowest eight (AutoGPT, baserow, meshery, prettier, TanStack/query, lexical, luma.gl, vuejs/core) have 30 or 31, then typescript-eslint 35, vite 36, trpc 49, svelte 50, zod 54 and babel 75.
-- Run 4 added 8 to 16 days to each of the slowest eight, while one day a day expires. At that pace they need four to eight more daily runs, fewer once finished repositories free their share. That is an estimate.
+- Every run spent its 320-minute budget and stopped one item partway through (`stoppedEarly`: time budget spent). Run 5's job took 320 of its 350 minutes, publishing included, and had no errors.
+- **Run 5 was the first after the move to `trommelci`.** It called `trommelci/trommel/.github/workflows/corpus-collect.yml@main`, collected with `65a5958`, and its templates check passed.
+- After run 5, 12 repositories have all 87 days; zod finished. The slowest six (AutoGPT, TanStack/query, baserow, lexical, prettier, luma.gl) have 48, then vuejs/core 49, vite 50, meshery 52, svelte 66, trpc 75, and babel and typescript-eslint 85.
+- Run 5 added about 17 days to each of the slowest six, while one day a day expires. At that pace they need about three more daily runs, fewer once finished repositories free their share. That is an estimate.
+- Run 5 mirrored no test-report archives (run 4 mirrored 15). The corpus is almost all run, attempt and job metadata.
 - Run 3's one error (`Unexpected end of JSON input`, es-toolkit, 2026-08-19) was collected again: es-toolkit has every day after run 4.
 
 **If the run failed or published nothing:**
@@ -397,15 +406,15 @@ These come from the M1 row of [roadmap §1](docs/roadmap.md):
   - 24 of the 26 vetted repositories use them (19 pnpm, 5 yarn), so they gate the replay corpus in M4 ([bench/CORPUS.md](bench/CORPUS.md)).
   - Today `detectLockfile` reports both as unparseable (L3).
   - The YAML subset in `core/resolve/yaml.ts` is too small for `pnpm-lock.yaml`.
-- **The four M1 items of §1.1,** before SMAP: ~~selector backstops~~ (done, DECISIONS 29), ~~the environment out of the map~~ (done, DECISIONS 28), resolution hubs, then SMAP v0 itself.
+- **The four M1 items of §1.1,** before SMAP: ~~selector backstops~~ (done, DECISIONS 29), ~~the environment out of the map~~ (done, DECISIONS 28), ~~resolution hubs~~ (done, DECISIONS 32), then SMAP v0 itself.
 - **SMAP v0, byte-identical across OSes.**
   - The JSON map already is: `golden.test.ts` pins one fixture's hash on every CI OS. SMAP v0 takes that fixture over for its static layer.
   - The provenance width is settled: one byte per edge, three bits defined (ADR-0009, DECISIONS 27).
   - v0 is the container, the snapshot layer and the static layer. The record layer comes in M3.
 - **`trommel explain`.**
 - **Golden graphs for 6 repositories.** These need clones, so ask first.
-- **T6:** a 10,000-file graph in under 30 s cold and under 3 s incremental. The lexer alone is about 3 s per 100 MB.
-- ~~**Measure the probe-edge volume.**~~ Done on 2026-11-13: 84% of edges at 10,000 files. The answer is hub nodes (§1.1 item 3, DECISIONS 27).
+- **T6:** a 10,000-file graph in under 30 s cold and under 3 s incremental. Cold is 1.8 s with hubs; incremental is not measured, and extraction is not cached. The lexer alone is about 3 s per 100 MB.
+- ~~**Measure the probe-edge volume.**~~ Done on 2026-11-13: 84% of edges at 10,000 files. The answer, hub nodes, is built (§1.1 item 3, DECISIONS 32).
 - **The open items from the kickoff brief, §7:**
   - Time each candidate's suite offline (R2 in CORPUS.md); none are timed yet.
   - Read the licenses of date-fns, maplibre and every NOASSERTION repository.
@@ -422,8 +431,9 @@ These come from the M1 row of [roadmap §1](docs/roadmap.md):
 | Lexer, generative | 2,000 programs plus 3,000 arbitrary inputs | `packages/core/test/lex/lexer.test.ts` |
 | P1, P3 and why-paths | 2,000 / 2,000 / 1,000 random graphs | `packages/core/test/graph/graph.test.ts` |
 | Resolver evidence completeness | 400 repositories × 13 specifiers | `packages/core/test/resolve/resolver.test.ts` |
-| T6: `trommel graph` cold, synthetic 10,000-file TS monorepo (42 MB) | **2.5 s** (target 30 s); 106,390 nodes, 684,501 edges, 26.7 MB JSON map; plan from it 0.8 s | `bench/results/2026-11-12-static-graph-win32.json` |
-| `trommel graph` cold on this repository | 0.36 s; 1,457 nodes, 2,739 edges | `bench/results/2026-11-12-static-graph-trommel-win32.json` |
+| T6: `trommel graph` cold, synthetic 10,000-file TS monorepo (42 MB) | **1.8 s** with hubs (target 30 s); 20,107 nodes, 145,041 edges, 7.1 MB JSON map; plan from it 0.18 s, or 0.36 s when a file is added. Before hubs, the same day: 2.5 s, 106,388 nodes, 683,501 edges, 26.7 MB, plan 0.84 s | `bench/results/2026-11-14-static-graph-win32.json`, `…-before-hubs-win32.json` |
+| `trommel graph` cold on this repository at `65a5958` | 0.37 s; 514 nodes, 1,044 edges, 142 KB (before hubs: 1,466, 2,790, 263 KB) | `bench/results/2026-11-14-static-graph-trommel-win32.json` |
+| Hubs against `main`'s planner, this repository's last 70 commits | Identical selections on all 70: 592 of 1,753 test-file runs | DECISIONS 32 |
 | Static selection soundness | 2,000 random repository pairs; 20 hand mutants caught | `packages/core/test/select/plan.test.ts` |
 
 All measured on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. There are no Linux numbers yet.
@@ -470,7 +480,9 @@ These are honest limits, not bugs. Each one errs towards running more tests.
   - Global inputs are found by conventional names (`vitest.setup.*`, `jest.setup.*` and runner configs). A setup file with another name must be listed in `inputs.global`.
   - Nothing compares environments. The map and the static plan hold nothing about any machine (DECISIONS 28), and the check in the job that runs the test arrives with `trommel run` (M3). Until then a would-skip says nothing about the Node version or the OS, one more reason it stays unproven.
   - `env.track` in `trommel.config.json` is validated and used for nothing until the M2 recorder reads it.
-  - The JSON map is about 2.7 KB per file (26.7 MB at 10,000 files), and a plan re-parses it and rebuilds the CSR arrays (0.8 s at 10,000 files). SMAP fixes both. Extraction is not cached, so incremental builds are as slow as cold ones.
+  - The JSON map is about 0.7 KB per file (7.1 MB at 10,000 files, with hubs), and a plan re-parses it and rebuilds the CSR arrays (0.12 s at 10,000 files). SMAP fixes both. Extraction is not cached, so incremental builds are as slow as cold ones.
+  - When any directory listing changed, a plan recomputes every `r:` and `c:` hub at the head (0.19 s at 10,000 files). Hubs are not yet limited to the directories that changed.
+  - A probed directory's listing is part of its hub's hash, as its `d:` node was, so a file added to `src/d/` reruns the importers of `./d` even when no candidate changed (DECISIONS 32).
   - Only npm lockfiles are parsed. With pnpm or yarn, every bare import depends on the lockfile file, and any change to it runs everything (L3).
   - Precision costs seen on hono:
     - A version bump in the root `package.json` reruns every test, because each file depends on its whole nearest `package.json`. Hashing only the fields that change module semantics (`type`, `exports`, `imports`, `main`, dependencies) would fix it.
@@ -483,8 +495,8 @@ These are honest limits, not bugs. Each one errs towards running more tests.
   - ADR-0021 now states the cache trust model: a fork or an untrusted author cannot replace the map. Its key layout, `cache-mode` and origin check are M3 work; `trommel.yml` still saves `trommel-map-<sha>` and restores by prefix.
   - The shards run exactly the plan's list, which comes from Trommel's own discovery. A test that Vitest would run and Trommel does not find runs only in `ci.yml`. Keep `ci.yml` required until `trommel run` reconciles with the runner (ADR-0004).
   - A directory named by `new URL(…, import.meta.url)` depends on every file below it (DECISIONS 26). In a global input, a URL that names the repository root would select every test on any change, so this repository uses `import.meta.dirname`.
-- **Collector.** See §5.4. Coverage after four runs is in §5.3; the backlog is not cleared yet.
-- **Found by the foundation review and not fixed** (its M6, L2 and L3; DECISIONS 27; L1 is fixed, DECISIONS 29):
+- **Collector.** See §5.4. Coverage after five runs is in §5.3; the backlog is not cleared yet.
+- **Found by the foundation review and not fixed** (its M6 and L2; DECISIONS 27; L1 is fixed by DECISIONS 29 and L3 by DECISIONS 32):
   - An import of a `.vue` or `.svelte` file is a plain target: that file's own imports are not followed, and nothing is flagged.
   - A `file:` link dependency outside the workspace list gets a `p:` node with a constant hash and no edge to its sources.
   - A workspace package wins by name even when a nested installed copy would shadow it for that importer.
@@ -550,6 +562,7 @@ These are honest limits, not bugs. Each one errs towards running more tests.
 | 29 | Unmapped inputs follow the graph; unreached changed nodes escalate; the owning package is a workspace member |
 | 30 | The name is Trommel: every identifier renamed, the `trommelci` org, the trademark screen |
 | 31 | The roadmap has no dates or commit budgets: a milestone is done when its exit criteria are met |
+| 32 | Resolution hubs `r:` and `c:`, engine `trommel-static-3`; the package-root lookup recorded (review L3) |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 

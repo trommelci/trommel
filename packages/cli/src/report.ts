@@ -120,7 +120,7 @@ export function summaryOf(report: PlanReport): string {
     lines.push('', `### Also run (${forced.length})`, '');
     for (const { test, reason, path } of forced.slice(0, MAX_LISTED)) {
       // An L1 test from another package: show the dependencies that lead into the escalated one.
-      const through = path === undefined || path.length < 2 ? '' : `, through ${path.slice(1).map(shown).join(' → ')}`;
+      const through = path === undefined || path.length < 2 ? '' : `, through ${readable(path).slice(1).map(shown).join(' → ')}`;
       lines.push(`- \`${test}\`: ${reason}${through}`);
     }
   }
@@ -149,16 +149,31 @@ export function summaryOf(report: PlanReport): string {
 
 /** Test first, then each dependency, ending at the changed or uncertain node. */
 function whyPath(path: readonly string[], uncertain: PlanReport['uncertain']): string {
-  const steps = path.map((node, i) => {
-    if (i === path.length - 1 && node.startsWith('u:')) {
+  const shortened = readable(path);
+  const steps = shortened.map((node, i) => {
+    if (i === shortened.length - 1 && node.startsWith('u:')) {
       return `uncertain: ${(uncertain[node] ?? []).join('; ')}`;
     }
-    return i === path.length - 1 ? `${shown(node)} (changed)` : shown(node);
+    return i === shortened.length - 1 ? `${shown(node)} (changed)` : shown(node);
   });
   return steps.join(' → ');
 }
 
-/** A node as the summary shows it: a file by its path, anything else by its key. */
+/**
+ * A path without the resolution hubs between two files, which only say that one imports the other
+ * (the plan JSON keeps them). A hub at the end stays: it is what changed.
+ */
+function readable(path: readonly string[]): readonly string[] {
+  return path.filter((node, i) => i === path.length - 1 || !(node.startsWith('r:') || node.startsWith('c:')));
+}
+
+/** A node as the summary shows it: a file by its path, a hub by what it stands for, anything else by its key. */
 function shown(node: string): string {
+  if (node.startsWith('r:')) {
+    return `resolution of \`${node.slice(2)}\``;
+  }
+  if (node.startsWith('c:')) {
+    return `configs of \`${node === 'c:' ? '.' : node.slice(2)}\``;
+  }
   return `\`${node.startsWith('f:') ? node.slice(2) : node}\``;
 }
