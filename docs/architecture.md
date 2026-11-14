@@ -384,7 +384,10 @@ Each spec covers input, output, algorithm, complexity, the safety or correctness
   - `d:dir`: hash = SHA-256 of the sorted entry *names and kinds*, where the kind is file, symlink, submodule or directory. A missing directory hashes to ⊥. The node catches resolution shadowing and `readdir` ([DECISIONS.md](../DECISIONS.md) entry 12).
   - `p:eco:location`: an external package. Hash = the lockfile's integrity/version for that install location (npm `packages["node_modules/x"]`, pnpm `name@version(peer)`, yarn berry descriptor).
   - `g:glob@base`: hash of the sorted matched paths (`import.meta.glob`, declared globs).
-  - `r:path` and `c:dir`: resolution hubs ([ADR-0003](adr/0003-file-level-graph-granularity.md)). `r:` stands for the probes of one resolved path and `c:` for one directory's config chain, so an importer has one edge per import, not one per probe. Decided on 2026-11-13 and not built yet: the M1 code records each probe as its own edge.
+  - `r:path` and `c:dir`: resolution hubs ([ADR-0003](adr/0003-file-level-graph-granularity.md)). `r:` stands for the probes of one resolved path and `c:` for one directory's config chain, so an importer has one edge per import, not one per probe.
+    - **Hash** = SHA-256 of what the hub recorded: the candidates that exist and those that don't, the configs it read, each probed directory with its listing hash, its sub-hubs, and whether it is uncertain. A hub has edges to the files and configs that exist, so their contents stay with their own `f:` nodes, and an absent candidate is no node at all.
+    - A package directory's entries are sub-hubs. A hub that found only its own path, as an existing file, is linked as that file.
+    - **As built** since 2026-11-14 ([DECISIONS.md](../DECISIONS.md) entry 32): a plan recomputes every hub at the head when any directory listing changed, and none when none did.
   - **Environment components are not nodes.** OS and architecture, the runtime version, declared env vars, the runner and its effective configuration, the matrix cell and TZ/locale belong to a record, and are compared in the job that runs the test (§3.3). **As built:** the M1 map has had no `e:` node since 2026-11-14, and a static plan compares no environment at all until `trommel run` does it in the shard (M3). `packages/core/test/graph/golden.test.ts` pins one fixture map's SHA-256, and CI runs it on Ubuntu and Windows ([DECISIONS.md](../DECISIONS.md) entry 28).
   - `sm:path`: submodule gitlink, hash = commit OID.
 - **Snapshot** = (repo, root tree OID, env fingerprint). Git's tree objects *are* the Merkle tree: equal tree OIDs prove equal subtrees, and they are available in `--depth 1` clones.
@@ -417,7 +420,7 @@ Each spec covers input, output, algorithm, complexity, the safety or correctness
     - tsconfig `paths`/`baseUrl`/`extends`;
     - package.json `exports`/`imports` with conditions;
     - npm/yarn/pnpm workspaces;
-    - **probe recording**: every candidate path tried becomes a ⊥ node, and every probed directory a `d:` node.
+    - **probe recording**: every candidate path tried is recorded as absent (⊥), and every probed directory by its listing. What depends only on the resolved path or the importer's directory goes into an `r:` or `c:` hub's hash; the rest (a workspace lookup, root mocks, a URL's directory) stays as ⊥ and `d:` nodes of the importer's own.
   - Unresolvable specifier → `u:` node, which flags the importer as uncertain.
   - `import type` edges are dropped unless the project runs type tests (Vitest typecheck), because that syntax is always erased.
   - Static extraction is cached by (blob OID, extractor version), so a record run re-parses only changed blobs.

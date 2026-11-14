@@ -240,6 +240,7 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
   - **The soundness property:** on 400 random repositories × 13 specifiers, adding any file that isn't recorded evidence, or removing any file that isn't a target, config or under a recorded directory, never changes the result.
   - 10 hand mutants of the safety-critical choices, all caught.
 - **Cost, still to measure.** Probe edges will dominate the edge count, at about 10 per extensionless import. If SMAP size or graph build time demands it, shared per-directory "probe group" nodes can cut that.
+- **Settled by entry 32 (2026-11-14).** Probes that depend only on the resolved path or the importer's directory live in `r:` and `c:` resolution hubs, whose hash covers which candidates exist. An absent candidate inside a hub is no longer a node.
 
 ## 18. npm lockfiles (`core/lockfile/npm`)
 
@@ -670,3 +671,58 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - dates that record when something happened.
   - **Records keep their wording.** Earlier entries in this log, and the dated reports in `docs/research/`, still say "week 1" or "week 3". Read "week 1" as the start of M1, and "week 3" (SMAP, the pnpm and yarn parsers) as later in M1.
 - **Evidence.** A search of every Markdown file outside `docs/research/` for weeks, months, month-and-day dates, commits per week and commit counts. Every match left is in the "kept" list above, is part of a past entry here, or is not about the plan: CORPUS.md's R3 and M4's "≥200 commits" count commits of the repositories Trommel replays, Node's end-of-life dates are Node's, and "fell behind" or "behind an interface" are ordinary words.
+
+## 32. Resolution hubs: `r:` and `c:` (2026-11-14)
+
+- **Context.** ADR-0003, as corrected on 2026-11-13 (entry 27), makes resolution hubs node kinds. The code still recorded every probe as its own edge from the importer, as entries 17 and 23 describe.
+  - The review measured probe evidence at 84% of the edges and 91% of the nodes of a 10,000-file map (its finding M3). Entry 17 had left the cost open, with per-directory "probe groups" as the lever.
+  - On this repository, each file's own config chain was most of it: imports carry their extensions, but every file had an edge to each absent `tsconfig.json` and `package.json` above it.
+  - This is item 3 of [HANDOFF.md](HANDOFF.md) §1.1. The review's finding L3 belongs with it: a leading-slash path, a bare import's root mocks and a leading-slash glob resolve against the importer's package root, and `resolve()` recorded nothing about how that root was found. Only the file's own config edges covered it, and a hub refactor would have dropped that cover.
+- **Decision.**
+  - **Two hub kinds**, each worked out once per resolver and shared by every importer:
+    - `r:<path>`: what resolving that path probed. That is the exact path, the TypeScript source for a `.js` name, every extension, the directory with its package.json entry, and `index` with every extension. It depends on the path alone (`Resolver.probePath`).
+    - `c:<dir>`: the tsconfig chain that governs files in that directory, and the nearest package.json at or above it, with every miss on the way up. It is the evidence `fileConfigs` returned for any file in that directory.
+  - **A package directory's entries are sub-hubs.** `r:lib/pkg` links to `r:lib/pkg/main.js` and `r:lib/pkg/index`, because each is resolved as a path of its own. A cycle of `main` fields used to overflow the stack. It now ends at the hub still being worked out, and makes the result uncertain ("resolution cycle").
+  - **A hub's hash covers which candidates exist; its edges carry what they hold.** The hash is SHA-256 of the canonical JSON of what the hub recorded itself: targets, absent candidates, configs, each probed directory with its listing hash, sub-hubs, reason and uncertainty. The hub has edges to the targets and configs that exist, so an edit to one changes that file's `f:` node and not the hub. **An absent candidate is no node at all.**
+  - **The listing of a probed directory stays in the hash.** For an existing directory its own probes already cover every candidate, so this is wider than it has to be. It keeps exactly what the `d:` node gave: a file added to `src/d/` still selects the importers of `./d`. Narrowing it is a precision change, for later and with evidence.
+  - **A hub that found only its own path, as an existing file, is linked as that file.** For `import './b.ts'` the importer's edge goes to `f:src/b.ts`. That file's hash changes whenever the path stops being exactly that file: when it is edited, deleted, turned into a symlink or directory, or hidden below a new symlink. A symlink whose target is missing keeps its hub, since the target may appear.
+  - **An importer has one edge per hub**, plus edges for the evidence outside every hub: the workspace lookup (`g:workspaces`, `package.json`, `pnpm-workspace.yaml`), root mock listings, a workspace package's own package.json and its `exports` targets, URLs, globs and `__mocks__`. Every lexed file also has one edge to its own `c:` hub.
+  - **`Resolution` still lists everything it recorded**, so its meaning is unchanged. It adds `hubs` and `direct`, the part outside the hubs. A property checks that `direct` plus every hub's evidence, followed through sub-hubs, gives back exactly the full lists.
+  - **L3 is fixed.** Wherever the resolver uses the importer's package root (a leading slash, root mocks, a `#` import, a leading-slash glob), it now includes the importer's `c:` hub, whose package.json lookup is the same walk. The hub's tsconfig plays no part in that lookup, so an unreadable tsconfig does not make those imports uncertain. A bare import still is, as before: its `paths` are unknown.
+  - **The plan recomputes hubs at H, and only when a listing changed.**
+    - With `Resolver.hub(key)` over the head, it compares each hub's hash with the map's.
+    - Nothing a hub's hash covers can change without a listing changing. A file that appears, vanishes or changes kind changes its directory's listing (entry 12), and the hash otherwise holds only names and listing hashes.
+    - A config's contents can still change what a hub probes, but that config is one of the hub's edges, and its own node has changed.
+    - So a plan for a change that only edits files recomputes no hub.
+  - **An added file that a changed hub now finds is seen, not unmapped.** Before, it was a ⊥ node of the map. Now it is a target or config of the recomputed hub. L1 does not fire for it, and the hub's change selects the importers. This matters for files that are not modules: a new `src/b.json` beside `./b`, or a new `src/tsconfig.json`.
+  - **Hubs have paths for L1.** An unreached changed hub escalates the package its path or directory lies in, and an escalated package seeds its hubs as well as its files.
+  - **The summary hides the hubs between two files.** They only say that one file imports the other; the plan JSON keeps them. A hub at the end of a why-path is named for what it stands for: "resolution of `src/b`" or "configs of `src`".
+  - **The engine becomes `trommel-static-3`** (entry 26's rule: the reading of a map changes). An older planner would never recompute a hub, and would miss a probe that appears. The new planner rejects an older map, which costs one run-all plan per cached map, with the cause given. `MAP_VERSION` stays 1: the fields and their layout are unchanged.
+  - **The golden map** gains a package directory (`src/vendor/`, entry `main.js`), so its bytes pin a hub with a sub-hub and an inlined exact entry. Its hash moves from `6ef757a6…d14aa1` to `d648c838…806811`, with the new engine id. It has 68 nodes (7 `c:`, 3 `d:`, 28 `f:`, 5 `g:`, 6 `p:`, 17 `r:` and 2 `u:`), where the fixture without its two new files had 214.
+  - **Superseded in earlier entries:**
+    - entry 17's "every missing one an absent (⊥) node" and "any path probed as a directory is a `d:` node", for the probes now inside a hub, and its "cost, still to measure";
+    - entry 23's edges from the importer to every absent path, `d:` directory and config, and to the file's own configs;
+    - the third row of entry 27's table of where the code lags.
+- **Evidence.**
+  - **Tests.** Hubs in `resolver.test.ts`: the shared hub, a package directory with sub-hubs, the `c:` hub, uncertainty, the four L3 cases, the cycle, and the split property over 400 random repositories for static, URL and mock imports.
+    - The evidence-completeness property now draws package.json files, so the package root moves, and has two more leading-slash specifiers. Before the fix it failed: adding `a/package.json` changed what `/x` resolved to.
+    - `static.test.ts` pins hub edges and hashes, the inlined exact file and the dangling symlink. `plan.test.ts` covers probes that appear, non-module files and configs that appear, an unreached hub, and a symlink whose target appears.
+    - The soundness property of entry 24 still passes its 2,000 runs. Its oracle shares no graph code and never knew how the builder factors edges.
+  - **22 hand mutants, all caught.** Two survived the first pass and gained a test each: an unreadable tsconfig not making a bare import uncertain, and inlining a hub that has absent probes, which matters for a dangling symlink.
+    - In the resolver: hub evidence not merged, or not marked as coming from a hub; a hub's reason or uncertainty dropped; the package-root lookup not recorded; no cycle guard, or a cycle that is not uncertain; the direct evidence keeping hub probes; the `c:` hub dropping package.json misses.
+    - In the builder: never inlining; the hash without listings or without absent candidates; no edge to the file's `c:` hub, to sub-hubs or to configs.
+    - In the planner: hubs never recomputed; files or configs that a changed hub finds not counted as seen; hubs without a path for L1.
+    - In the report: hubs kept between files.
+  - **This repository's last 70 non-merge commits**, each planned from a map of its parent, by `main`'s CLI and by this one. The selections are identical on all 70: 592 of 1,753 possible test-file runs, with the same L1 causes. Each map has about a third of the nodes and edges: at `65a5958`, 1,466 nodes and 2,790 edges become 514 and 1,044, and 263 KB becomes 142 KB.
+  - **The synthetic 10,000-file repository**, measured the same day with `main`'s benchmark and with this one ([bench/README.md](bench/README.md)):
+
+    | | Nodes | Edges | Map | CLI cold | Plan, an edit | Plan, a file added |
+    |---|---|---|---|---|---|---|
+    | `main` at `65a5958` | 106,388 | 683,501 | 26.7 MB | 2.5 s | 0.84 s | — |
+    | With hubs | 20,107 | 145,041 | 7.1 MB | 1.8 s | 0.18 s | 0.36 s |
+
+    - 9,520 `r:` and 520 `c:` hubs replace 86,802 absent files and 9,541 absent directories.
+    - The review inferred about 100,000 edges. The rest are each importer's edge to its hub and each hub's edge to its target.
+    - A plan where a file was added recomputes all 10,040 hubs, which costs 0.19 s more than one where a file was only edited.
+  - **The golden map's bytes match on two systems before CI:** `d648c838…806811` on Windows 11 (x64, Node 26.4), and on Ubuntu under WSL (x64, Node 22.22), run there from a type-stripped copy as in entry 28.
+  - 500 tests in 31 files pass. Lint, typecheck and the zero-dependency check are clean.
