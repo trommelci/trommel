@@ -9,10 +9,10 @@ const selection: Selection = {
   changed: ['f:src/b.ts'],
   uncertain: ['u:src/x.ts'],
   escalations: [{ level: 'L1', scope: 'pkgs/p', cause: 'pkgs/p/data.json was modified and is not in the graph' }],
-  affected: [{ test: 't/a.test.ts', path: ['f:t/a.test.ts', 'f:src/a.ts', 'f:src/b.ts'] }, { test: 't/b.test.ts', path: ['f:t/b.test.ts', 'f:src/x.ts', 'u:src/x.ts'] }],
+  affected: [{ test: 't/a.test.ts', path: ['f:t/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b', 'f:src/b.ts'] }, { test: 't/b.test.ts', path: ['f:t/b.test.ts', 'f:src/x.ts', 'u:src/x.ts'] }],
   forced: [
     { test: 'pkgs/p/t/p.test.ts', reason: L1, path: ['f:pkgs/p/t/p.test.ts'] },
-    { test: 't/e.test.ts', reason: L1, path: ['f:t/e.test.ts', 'f:src/e.ts', 'f:pkgs/p/index.ts'] },
+    { test: 't/e.test.ts', reason: L1, path: ['f:t/e.test.ts', 'r:src/e', 'f:src/e.ts', 'r:pkgs/p/index', 'f:pkgs/p/index.ts'] },
     { test: 't/new.test.ts', reason: 'new test file' },
   ],
   wouldSkip: ['t/c.test.ts', 't/d.test.ts'],
@@ -88,6 +88,26 @@ describe('summaryOf', () => {
   it('shows why-paths from the test to the change', () => {
     expect(summary).toContain('`t/a.test.ts` → `src/a.ts` → `src/b.ts` (changed)');
     expect(summary).toContain('`t/b.test.ts` → `src/x.ts` → uncertain: line 3: ./gone is unresolved (not found)');
+  });
+
+  it('drops the hubs between two files, and names a hub at the end by what it stands for', () => {
+    const hubs = summaryOf(
+      buildReport({
+        selection: {
+          ...selection,
+          affected: [
+            { test: 't/a.test.ts', path: ['f:t/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b'] },
+            { test: 't/b.test.ts', path: ['f:t/b.test.ts', 'c:'] },
+          ],
+        },
+        base: null,
+        head: { rev: 'HEAD', rootTree: 'b'.repeat(40) },
+        notPlanned: [],
+        shards: 1,
+      }),
+    );
+    expect(hubs).toContain('`t/a.test.ts` → `src/a.ts` → resolution of `src/b` (changed)');
+    expect(hubs).toContain('`t/b.test.ts` → configs of `.` (changed)');
   });
 
   it('lists escalations with their causes, and projects Trommel does not plan', () => {
