@@ -107,7 +107,7 @@ What they show:
 | `p:pnpm:<name>@*`, `p:yarn:<name>@*` | **A name node:** what decides which copy of a name loads when no declaration of the loader's own decides it. Used by a file that imports a name its own workspace package does not declare (§6.4), by a reference the lockfile does not resolve (§6.5), and by a Berry peer (§6.7) | SHA-256 of the canonical JSON of three sorted lists: the ids of every entry with that name; every importer that declares it, with what it resolves to; and every entry that depends on it, with the id it depends on. ⊥ when all three are empty | every entry those lists name: the entries with that name, and the entries its declarations and dependents point at, which differ for an alias such as zod's `zod3` |
 | `p:pnpm:#env` | **pnpm's own document** (§6.8) | SHA-256 of that document's canonical JSON | none |
 
-`@*` and `#` cannot occur in an id, so the kinds cannot collide. A name node exists for every name that a file or an entry points at by these rules, and a plan recomputes it at H from the head lockfile. Missing-package nodes keep today's form, `p:npm:node_modules/<name>` with hash ⊥, for a bare import of a name the lockfile does not know at all.
+No id contains `@*` and none is `#env`, so the kinds cannot collide. A reader refuses a lockfile that would break this (§6.5). Berry resolutions may contain `#`, as patch resolutions do. A name node exists for every name that a file or an entry points at by these rules, and a plan recomputes it at H from the head lockfile. Missing-package nodes keep today's form, `p:npm:node_modules/<name>` with hash ⊥, for a bare import of a name the lockfile does not know at all.
 
 ### 6.2 Edges
 
@@ -162,7 +162,7 @@ Importers are:
 
 - **A reference the lockfile does not resolve** points at the name node. That covers zod's peers on its own workspace package and prettier's `resolutions` redirect. `resolutions` and `overrides` are not applied: they live in the root `package.json`, a global input, so changing them already reruns everything.
 - **A declared workspace package** resolves to a lookup location with hash `link:<dir>` and no edge: pnpm's `link:`, Berry's `workspace:` descriptors, and, in classic yarn, a declared name that has no entry but is a workspace member.
-- **Refused, so the lockfile is unparseable:** an unknown format version; YAML outside §7.1's subset; a duplicate key; a pnpm snapshot with no `packages` entry; a dependency without a version; a Berry entry without `resolution`; more than two pnpm documents, or a first document that is not pnpm's own (§7.2). The rule is that a lockfile breaking its own format's invariants is refused, and a reference that legitimately points outside the lockfile takes the name node.
+- **Refused, so the lockfile is unparseable:** an unknown format version; YAML outside §7.1's subset; a duplicate key; a pnpm snapshot with no `packages` entry; a dependency without a version; a Berry entry without `resolution`; more than two pnpm documents, or a first document that is not pnpm's own (§7.2); an id that contains `@*` or is `#env`. The rule is that a lockfile breaking its own format's invariants is refused, and a reference that legitimately points outside the lockfile takes the name node.
 
 ### 6.6 Packages for other platforms
 
