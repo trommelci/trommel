@@ -8,7 +8,7 @@ Trommel is a self-hostable test-intelligence service for CI. On every run it:
 Every skip carries a machine-checkable proof, and uncertainty always means the test runs.
 
 **Status:** implementation of milestone M1 started on 2026-11-11. Roadmap days 1–10 are merged, the walking skeleton in CI included; the rest of M1 is under way. Milestones have no dates or commit budgets: each is done when its exit criteria are met.
-- `packages/core` has the snapshot diff, import lexer, module resolver, impact graph, npm lockfile reader, static graph builder and static selection. It also has the codec for SMAP v0, the binary map format ([docs/smap-format.md](docs/smap-format.md)), which the CLI does not use yet.
+- `packages/core` has the snapshot diff, import lexer, module resolver, impact graph, npm lockfile reader, static graph builder and static selection. The map it builds is stored as SMAP v0, a binary format with one encoding per map ([docs/smap-format.md](docs/smap-format.md)).
 - `packages/cli` runs from source: `node packages/cli/src/main.ts graph`, `diff` and `plan --mode shadow --static`. Without test records no skip is proven safe, so plans run every test and report the would-skips as unproven static reachability.
 - `.github/workflows/trommel.yml` runs Trommel on its own pull requests: plan, test shards and a gate, in shadow mode, with the map cached from `main`.
 - `tools/corpus` archives CI history into [trommelci/trommel-corpus](https://github.com/trommelci/trommel-corpus).

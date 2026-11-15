@@ -787,3 +787,38 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
   - **Found by the tests while they were being made to pass:** `ByteWriter` evaluated `this.buffer` before the call that could replace it, so a write that grew the buffer went to the old one.
   - **Size.** The golden fixture is 3,779 bytes as SMAP and 10,559 as canonical JSON. The 10,000-file numbers come with the cut-over, when the benchmark writes SMAP.
   - **The same bytes on two systems before CI:** all three vectors give identical lengths, hashes and layer addresses on Windows 11 (x64, Node 26.4) and on Ubuntu under WSL (x64, Node 22.22), run there from a type-stripped copy as in entry 28.
+
+## 34. The map on disk is SMAP: the cut-over (2026-11-15)
+
+- **Context.** Entry 33 built the SMAP v0 codec with no caller. This is the second pull request of the design ([docs/superpowers/specs/2026-11-14-smap-v0-design.md](docs/superpowers/specs/2026-11-14-smap-v0-design.md) §8): the CLI, the workflow and the benchmark move to SMAP, and the JSON reader goes. It finishes item 4 of [HANDOFF.md](HANDOFF.md) §1.1.
+- **Decision.**
+  - **`trommel graph --out <file>` writes a SMAP file. Without `--out` it prints the same map as canonical JSON.** The JSON is the view a person reads, and `>` writes it to a file. There is no `--format` flag: nobody needs SMAP on a terminal. The summary line on stderr says which was written and how many bytes.
+  - **`trommel plan --map <dir>` reads `<dir>/map.smap`** and hands the decoded graph to `selectStatic`, which takes it as an optional fourth argument and builds the graph itself without one. A plan no longer parses JSON or rebuilds the CSR arrays.
+  - **The file is `.trommel/map/map.smap`.** It is in the same directory as before, so the cache path in `trommel.yml` does not change. Nor does the cache key: its layout is M3's work under ADR-0021.
+  - **`parseMap` and its 14 tests are removed.** After the cut-over nothing reads a JSON map, and a second reader of untrusted input with no caller is a liability.
+    - Each refusal it made has a counterpart in the decoder: not JSON is "not a SMAP file"; the map version is the format number; the engine, the object format, a missing field, an edge to a missing node, a bad provenance, a test that is not a node and a malformed snapshot entry each have their check.
+    - Two have none because SMAP cannot write them: a `u:` node without causes, and causes for a node that is not `u:`. `UNCT` holds one entry per `u:` node, in id order.
+    - `MapError`, `mapGraph` and `mapIndex` stay. `mapGraph` is the oracle for the graph the decoder gives. `MAP_VERSION` stays as the version of the in-memory model and of its JSON.
+  - **What a plan does with a map it cannot use is unchanged:** it runs every test, exits 0 and gives the cause. The causes now read "no map at .trommel/map/map.smap", "it is not a SMAP file", "its trailer is not the SHA-256 of its contents", or the engine mismatch of entry 28.
+  - **The cost is one run-all plan per branch,** until a push to `main` caches a SMAP map. This change's own pull request is one of them. A cache saved before holds only `map.json`, which is "no map" to the new planner. An older planner on a branch that restores a new cache finds no `map.json` and also runs everything.
+  - **`@trommel/core` exports the container functions** (`decodeContainer`, `encodeContainer`, `layerAddress` and the layer numbers), for the CLI's tests and for the tools that will read layers.
+  - **Superseded in earlier entries:** entry 23's map file ("canonical JSON at `.trommel/map/map.json`") and its reader; entry 25's `trommel graph --out .trommel/map/map.json` in the workflow.
+- **Evidence.**
+  - **Tests.** 712 pass in 36 files: 726 before the reader's 14 went. Lint, typecheck and the zero-dependency check are clean.
+    - `cli.test.ts`, end to end against a throwaway repository: the file starts with the SMAP magic and decodes to the map of HEAD; two builds of one revision are byte-identical; the JSON on stdout is the canonical JSON of the decoded file.
+    - Eight fallbacks, each exiting 0 with every test planned and the cause in the plan, the summary and stderr: no map, a file that is not SMAP, a JSON map under the new name, an empty file, a file cut short, a file cut inside its header, a directory with only a stale `map.json`, and a map built by another engine.
+    - A directory with both files reads `map.smap` and ignores the stale `map.json`.
+    - `plan.test.ts`: a plan from the decoded map and graph equals a plan from the built map, and a graph with one edge removed selects otherwise, so the graph handed in is used and not rebuilt.
+  - **4 hand mutants, all caught:** the plan ignoring the decoded graph, the plan still reading `map.json`, `--out` writing JSON, and stdout left empty.
+  - **This repository's last 70 non-merge commits,** each planned from a map of its parent, by the CLI on `main` at `f672238` with a JSON map and by this one with a SMAP map. On all 70 the tests that would run, the why-path of each affected test and the escalations are identical: 640 of 1,973 possible test-file runs, 13 commits with an L1 escalation and no fallback. The 70 maps come to 9.81 MB as JSON and 3.26 MB as SMAP.
+  - **The synthetic 10,000-file repository** ([bench/README.md](bench/README.md)), against the numbers of entry 32 on the same machine:
+
+    | | Map | CLI cold | Writing the map | Plan, an edit | Plan, a file added |
+    |---|---|---|---|---|---|
+    | JSON map (entry 32) | 7.07 MB | 1.8 s | 0.08 s | 0.18 s: parse 0.06, select 0.12 | 0.36 s |
+    | SMAP | 1.11 MB | 1.8 s | 0.09 s | 0.09 s: decode 0.05, select 0.04 | 0.24 s |
+
+    - The map is 6.4 times smaller: 1,110,846 bytes against 7,069,025.
+    - Decoding checks the trailer and every section, and gives the CSR graph. The select step no longer rebuilds it, which was half of its time.
+    - On this repository the map is 48,609 bytes against 149,855.
+  - **Not yet seen in CI:** `trommel.yml` with the SMAP map. Its first run on this change should show the run-all fallback with "no map at .trommel/map/map.smap", and the first push to `main` after the merge should cache a `map.smap`. Check both, as §7 of the hand-off did for day 10.
