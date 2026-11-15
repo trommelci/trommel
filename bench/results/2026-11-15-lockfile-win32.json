@@ -1,0 +1,62 @@
+{
+  "benchmark": "lockfile",
+  "environment": {
+    "cpu": "AMD Ryzen AI 7 350 w/ Radeon 860M",
+    "node": "v26.4.0",
+    "os": "win32 10.0.26200"
+  },
+  "results": [
+    {
+      "bytes": 332558,
+      "entries": 1075,
+      "file": "hono.pnpm-lock.yaml",
+      "importers": 9,
+      "medianMs": 10.7,
+      "reader": "pnpm",
+      "references": 1522,
+      "unresolved": 0
+    },
+    {
+      "bytes": 433789,
+      "entries": 1276,
+      "file": "zod.pnpm-lock.yaml",
+      "importers": 9,
+      "medianMs": 10.5,
+      "reader": "pnpm",
+      "references": 2700,
+      "unresolved": 5
+    },
+    {
+      "bytes": 364006,
+      "entries": 1027,
+      "file": "prettier.yarn.lock",
+      "importers": 1,
+      "medianMs": 7.8,
+      "reader": "yarn-berry",
+      "references": 1795,
+      "unresolved": 1
+    },
+    {
+      "bytes": 583970,
+      "entries": 1647,
+      "file": "es-toolkit.yarn.lock",
+      "importers": 5,
+      "medianMs": 15.9,
+      "reader": "yarn-berry",
+      "references": 2659,
+      "unresolved": 0
+    },
+    {
+      "bytes": 481747,
+      "entries": 1331,
+      "file": "excalidraw.yarn.lock",
+      "importers": 0,
+      "medianMs": 9.9,
+      "reader": "yarn-classic",
+      "references": 2667,
+      "unresolved": 0
+    }
+  ],
+  "runs": 5
+}
+

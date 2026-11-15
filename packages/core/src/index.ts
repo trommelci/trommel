@@ -18,3 +18,9 @@ export { CONFIG_PATH, runAll, selectStatic, type Escalation, type HeadState, typ
 export { SmapEncodeError } from './smap/bytes.ts';
 export { decodeContainer, encodeContainer, FORMAT, layerAddress, SNAPSHOT_LAYER, STATIC_LAYER, type Container, type Section } from './smap/container.ts';
 export { decodeSmap, encodeSmap, type Smap } from './smap/smap.ts';
+export { parseYamlSubset, YamlError } from './lockfile/yaml.ts';
+export { parsePnpmLockfile } from './lockfile/pnpm.ts';
+export { parseYarnBerryLockfile } from './lockfile/yarn-berry.ts';
+export { parseYarnClassicLockfile, type ClassicWorkspace } from './lockfile/yarn-classic.ts';
+export { lockfileFromModel, lookupKey, modelProblem, nameOfId, type ModelEntry, type Ref, type ResolvedModel } from './lockfile/model.ts';
+export type { Lockfile, LockfileKind } from './lockfile/lockfile.ts';

@@ -822,3 +822,36 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - Decoding checks the trailer and every section, and gives the CSR graph. The select step no longer rebuilds it, which was half of its time.
     - On this repository the map is 48,609 bytes against 149,855.
   - **Not yet seen in CI:** `trommel.yml` with the SMAP map. Its first run on this change should show the run-all fallback with "no map at .trommel/map/map.smap", and the first push to `main` after the merge should cache a `map.smap`. Check both, as §7 of the hand-off did for day 10.
+
+## 35. pnpm and yarn lockfile readers (2026-11-15)
+
+- **Context.** Until now a pnpm or yarn lockfile was `unparseable`, so any change to one escalated to L3 and ran every test. The design ([docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md](docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md)) reads all three formats into one resolved model, so that a bump of one package selects only the tests that reach it. This is the first of its two pull requests: the readers, with no caller. The cut-over to the builder and the planner is the second, and the engine stays `trommel-static-3` until then.
+- **Decision.**
+  - **One model, three readers.** `parsePnpmLockfile`, `parseYarnBerryLockfile` and `parseYarnClassicLockfile` each give a `ResolvedModel` (importers, entries, pnpm's own document) or an `Unparseable`. `lockfileFromModel` turns a model into the `Lockfile` interface: `p:pnpm:` and `p:yarn:` nodes, lookups, and name nodes `p:<kind>:<name>@*`. Each node's hash covers its outgoing edges. All of this is exported from `@trommel/core`.
+  - **A strict YAML subset, written for these two formats** (`lockfile/yaml.ts`, 7.1 of the spec). Block mappings, scalar sequences, plain, single- and double-quoted scalars, and one-line flow collections nested to 8 levels. Anchors, aliases, tags, block scalars, tabs in indentation, duplicate keys and odd indentation are refused, each naming its line. One pass, an explicit stack for block depth, and recursion only in flow collections, which the limit bounds. Every scalar is a string. A hostile file cannot reach a prototype: keys live in `Map`s, and the pnpm reader copies data with `defineProperty`.
+  - **Fields the graph does not need are read past,** not validated: `cacheKey`, `languageName`, `linkType`, `bin`, `engines`, `os`, `cpu`, the importers' `specifier` and the rest. A reader that refused what it never uses would break on every new field a package manager adds.
+  - **What is refused,** by `Unparseable` with the line or the reason: an unknown format (pnpm `lockfileVersion` other than `'9.0'`, Berry `__metadata.version` other than 8 and 10, classic without `# yarn lockfile v1`); YAML outside the subset; a duplicate key; a pnpm snapshot with no `packages` entry; a dependency with no version; a Berry entry with no `resolution`; a resolution or a descriptor that appears twice; more than two pnpm documents, or a first one that is not pnpm's own; a name listed twice in one classic block, or in two fields with references that resolve differently; merge-conflict markers, which no subset accepts, and which are named by line. `modelProblem` refuses an id that contains `@*` or is `#env`, an importer directory that is `.` or starts or ends with `/`, and a reference to an entry that does not exist (ruling R5): such an id would collide with a name node, and every reader calls it before returning.
+  - **A reference the lockfile does not resolve points at the name node,** and does not refuse. A lockfile that breaks its own format's invariants is refused. One whose references legitimately leave it is read: zod's peers on its own workspace package, prettier's `resolutions` redirect.
+  - **Berry workspace entries are importers,** not entries, and their descriptors are links. Classic yarn has no workspace data of its own, so its reader takes a `ClassicWorkspace` (importers from the members' `package.json`, and the workspace package names). A declared name with no entry that is a member is a link.
+  - **Totality is a tested property.** For each reader, 2,000 seeded mutations of every fixture (a cut, a deleted, duplicated or swapped line, a replaced character, or a block emptied under its key) give a model or `unparseable`, and nothing is thrown. 10,000 nested `[` are refused by the depth limit, and a 1 MB single-line value reads in one pass.
+- **Evidence.**
+  - **Tests.** 890 pass in 42 files, where there were 717 in 36 (712 after entry 34). Lint, typecheck and the zero-dependency check are clean, and both golden hashes are unchanged.
+    - `yaml.test.ts` (40), `model.test.ts`, `pnpm.test.ts` (26), `yarn-berry.test.ts` (23), `yarn-classic.test.ts` (36) and `fuzz.test.ts` (11).
+    - Fixtures are small hand-built files: two pnpm shapes, Berry 8 and 10, and classic.
+  - **Five real lockfiles, read with no refusal** (benchmark in [bench/README.md](bench/README.md), recorded in [bench/results/2026-11-15-lockfile-win32.json](bench/results/2026-11-15-lockfile-win32.json)):
+
+    | Sample | Format | Bytes | Entries | Importers | References | Unresolved | Median of 5 |
+    |---|---|---|---|---|---|---|---|
+    | hono | pnpm | 332,558 | 1,075 | 9 | 1,522 | 0 | 10.7 ms |
+    | zod | pnpm | 433,789 | 1,276 | 9 | 2,700 | 5 | 10.5 ms |
+    | prettier | Berry | 364,006 | 1,027 | 1 | 1,795 | 1 | 7.8 ms |
+    | es-toolkit | Berry | 583,970 | 1,647 | 5 | 2,659 | 0 | 15.9 ms |
+    | excalidraw | classic | 481,747 | 1,331 | 0 | 2,667 | 0 | 9.9 ms |
+
+    - The five unresolved in zod are its peers on its own workspace package. The one in prettier is `remark-parse` redirected to `trim` by `resolutions`. Excalidraw is read with an empty `ClassicWorkspace`, so its importer count is 0.
+    - zod has 1,276 snapshots, where its `packages` section has 1,275 keys: peer variants share a base.
+  - **78 hand mutants, all caught.** 10 in the YAML subset, 20 in the model, 23 in the pnpm reader, 9 in the Berry reader, 15 in the classic reader and 1 in the fuzz test.
+    - **Three survived their first pass and gained tests:** the tab check in the YAML subset (the first test used two tabs, so the odd-indentation check masked it); the peer suffix cut at the first `(` anywhere, not the first after the version's `@`; and a four-space line outside a block in classic yarn.
+    - **A fourth survived the fuzz test itself.** With the Berry check that a top-level value is a map replaced by a cast, so that a scalar value made `value.get` throw a `TypeError`, 2,000 runs passed. `fc.double` was drawing almost only values near 0, so every "random" line was the first one. Fractions now come from `fc.integer`, and the same mutant fails on its first counterexample, a cut at 0.67.
+    - The soundness mutants of the model are the three that matter: an entry hash that drops its dependencies, a name-node hash that drops its dependents, and a `locate` that walks up to an ancestor importer.
+  - **Not done here:** nothing calls the readers, so no plan changes. Corpus lockfiles (spec 9.4) and the replay of this repository's commits are the cut-over's evidence.

@@ -80,3 +80,22 @@ All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in 
   - **Decoding replaces the parse and the rebuild.** A plan for an edit takes 0.09 s: 0.05 s to decode, which checks the trailer and every section and gives the CSR graph, then 0.04 s to select. With the JSON map the same plan took 0.18 s. A plan where a file was added takes 0.24 s, against 0.36 s.
   - **Encoding costs about as much as JSON did:** 0.09 s for `encodeSmap`, where canonical JSON took 0.05 to 0.08 s. The cold CLI is unchanged at 1.8 s.
   - A second run of the script gave the same numbers within 10 ms.
+
+## Lockfile readers: `node bench/lockfile.ts <file> …`
+
+This reads each lockfile with its reader, picked by file name: `*pnpm-lock.yaml` is pnpm, and `*yarn.lock` is classic yarn when the text holds `# yarn lockfile v1`, else Berry. Classic yarn is read with an empty `ClassicWorkspace`. It prints the bytes, the median parse time of 5 runs, and the counts of entries, importers, references and unresolved references (those that point at a name node). A refusal is printed and recorded, not hidden.
+
+The five samples of the design (spec §9.5) are the lockfiles of hono and zod (pnpm), prettier and es-toolkit (Berry) and excalidraw (classic). They are downloaded from each project's default branch, outside this repository, and recorded by base name.
+
+| Date | Platform | Sample | Bytes | Median | Entries | Importers | References | Unresolved |
+|---|---|---|---|---|---|---|---|---|
+| 2026-11-15 | Windows 11, Ryzen AI 7 350, Node 26.4 | hono, pnpm | 332,558 | 10.7 ms | 1,075 | 9 | 1,522 | 0 |
+| | | zod, pnpm | 433,789 | 10.5 ms | 1,276 | 9 | 2,700 | 5 |
+| | | prettier, Berry | 364,006 | 7.8 ms | 1,027 | 1 | 1,795 | 1 |
+| | | es-toolkit, Berry | 583,970 | 15.9 ms | 1,647 | 5 | 2,659 | 0 |
+| | | excalidraw, classic | 481,747 | 9.9 ms | 1,331 | 0 | 2,667 | 0 |
+
+The raw output is in [results/2026-11-15-lockfile-win32.json](results/2026-11-15-lockfile-win32.json).
+- **No refusal,** and the largest file (584 KB) reads in under 16 ms.
+- **zod's 5 unresolved** are its peers on its own workspace package. **prettier's 1** is `remark-parse`, which `resolutions` redirects to `trim`. Neither is a refusal: the reference takes the name node (spec §6.5).
+- **Excalidraw's importer count is 0** because the benchmark gives classic yarn an empty workspace. A real plan reads the members' `package.json` files.
