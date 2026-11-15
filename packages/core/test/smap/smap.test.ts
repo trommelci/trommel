@@ -12,41 +12,13 @@ import { decodeSmap, encodeSmap } from '../../src/smap/smap.ts';
 import { fakeRepo } from '../graph/fake-repo.ts';
 import { arbitraryMap } from './arbitrary.ts';
 import { ascii, assemble, bytesOf, hexOf, type HandSection } from './hex.ts';
+import { ONE } from './vector-one.ts';
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
 const run = (byte: string, count: number): string => Array.from({ length: count }, () => byte).join(' ');
 
 // Vector 1: a map written by hand that uses every section, and the bytes the specification gives
 // for it (docs/smap-format.md §6). The bodies below are the oracle: nothing in them is computed.
-const ONE: TrommelMap = {
-  version: 1,
-  engine: 'trommel-static-3',
-  objectFormat: 'sha1',
-  rootTree: 'aa'.repeat(20),
-  undecodable: 0,
-  config: null,
-  lockfile: { kind: 'npm', path: 'package-lock.json' },
-  snapshot: [
-    ['100644', '11'.repeat(20), 'a.test.ts'],
-    ['100644', '22'.repeat(20), 'a.ts'],
-  ],
-  nodes: {
-    'f:a.test.ts': '11'.repeat(20),
-    'f:a.ts': '22'.repeat(20),
-    'g:glob:k': 'cc'.repeat(32),
-    'p:npm:node_modules/x': 'sha512-X',
-    'p:npm:node_modules/y': null,
-    'u:a.ts': sha256('["line 1: lexer E"]'),
-  },
-  edges: {
-    'f:a.test.ts': { 'f:a.ts': 1, 'g:glob:k': 4 },
-    'f:a.ts': { 'p:npm:node_modules/x': 1, 'p:npm:node_modules/y': 1, 'u:a.ts': 1 },
-  },
-  globs: { 'g:glob:k': ['*.ts'] },
-  tests: ['a.test.ts'],
-  uncertain: { 'u:a.ts': ['line 1: lexer E'] },
-};
-
 const HEADER = [
   '89 53 4d 41 50 0d 0a 1a', // magic
   '00 00', // format 0
@@ -308,6 +280,27 @@ describe('decodeSmap', () => {
     const bytes = vectorWith({ [tag]: `${BASE[tag]} 00` });
     expect(() => decodeSmap(bytes)).toThrow(MapError);
     expect(() => decodeSmap(bytes)).toThrow(new RegExp(`section ${tag}.*left over`));
+  });
+
+  // A count is checked against the bytes left before anything is sized by it: 2^32 - 1 of anything
+  // cannot fit a section of a few bytes, and must not be allocated to find that out.
+  it.each<[string, Partial<Record<Tag, string>>]>([
+    ['snapshot entries', { SNAP: `${run('aa', 20)} 00 ff ff ff ff 0f` }],
+    ['keys', { KEYS: 'ff ff ff ff 0f' }],
+    ['edges', { EDGE: 'ff ff ff ff 0f' }],
+    ['tests', { TEST: 'ff ff ff ff 0f' }],
+    ['causes', { UNCT: 'ff ff ff ff 0f' }],
+    ['patterns', { GLOB: '01 ff ff ff ff 0f' }],
+    ['lockfile paths', { META: `${run('aa', 20)} 00 02 00 ff ff ff ff 0f` }],
+  ])('rejects a count of 2^32 - 1 %s without allocating them', (_name, change) => {
+    const bytes = vectorWith(change);
+    expect(() => decodeSmap(bytes)).toThrow(MapError);
+    expect(() => decodeSmap(bytes)).toThrow(/a count of 4294967295 does not fit/);
+  });
+
+  it('rejects more nodes than the adjacency section has bytes for', () => {
+    const bytes = vectorWith({ EDGE: '00' });
+    expect(() => decodeSmap(bytes)).toThrow(/section EDGE.*6 nodes do not fit/);
   });
 
   it('rejects what is not a SMAP file', () => {
