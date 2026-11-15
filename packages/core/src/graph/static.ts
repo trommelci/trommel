@@ -1,5 +1,6 @@
-// The static impact graph of one snapshot (architecture §3.1, §3.2), stored as the M1 map: canonical
-// JSON at .trommel/map/map.json until SMAP replaces it. Every module file is lexed from its git blob,
+// The static impact graph of one snapshot (architecture §3.1, §3.2), as the map a plan starts from.
+// On disk it is a SMAP file (../smap/smap.ts, docs/smap-format.md); `trommel graph` prints the same
+// map as canonical JSON. Every module file is lexed from its git blob,
 // every import resolved, and everything a resolution recorded becomes an edge, so a test depends
 // on every file, absent path, directory listing, glob, config and package that could change what
 // it loads. What cannot be decided is not dropped: it becomes a `u:` node, always treated as changed
@@ -24,7 +25,7 @@ import { matchGlobs } from '../resolve/glob.ts';
 import { dirname, Resolver, type Hub, type Resolution, type Vfs } from '../resolve/resolver.ts';
 import { DECLARED, STATIC } from './graph.ts';
 
-/** The map format; a map of another version is invalid (L3). */
+/** The version of this in-memory model and of its canonical JSON. The file format has its own number (../smap/container.ts). */
 export const MAP_VERSION = 1;
 /**
  * What builds the graph and how a plan reads it; a map built by another engine is invalid (L3).

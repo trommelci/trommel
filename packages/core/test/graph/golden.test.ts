@@ -1,6 +1,7 @@
 // The golden map (ADR-0009, DECISIONS 28). The static map of a snapshot is a function of the tree,
 // the config and the engine only (ADR-0003), so this fixture's map has the same bytes on every
-// machine. CI runs this file on Ubuntu and on Windows: that is the cross-OS check.
+// machine. CI runs this file on Ubuntu and on Windows: that is the cross-OS check of the builder.
+// ../smap/golden.test.ts pins the same map as a SMAP file, which is what a plan reads back.
 //
 // A change to the pinned hash is reviewed like a snapshot. It comes with a new ENGINE id, or with a
 // DECISIONS entry saying why maps from the older builder stay safe to plan from (DECISIONS 26).
@@ -11,7 +12,6 @@ import { describe, expect, it } from 'vitest';
 
 import { canonicalJson } from '../../src/canonical-json.ts';
 import { DECLARED, STATIC } from '../../src/graph/graph.ts';
-import { parseMap } from '../../src/graph/map.ts';
 import { ENGINE } from '../../src/graph/static.ts';
 import { goldenMap } from './golden-fixture.ts';
 
@@ -50,9 +50,5 @@ describe('the golden map', () => {
 
   it('has the pinned bytes, whatever machine built it', () => {
     expect({ engine: ENGINE, sha256: createHash('sha256').update(text).digest('hex') }).toEqual(GOLDEN);
-  });
-
-  it('reads back to the same bytes', () => {
-    expect(canonicalJson(parseMap(text))).toBe(text);
   });
 });

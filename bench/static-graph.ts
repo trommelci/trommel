@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Static graph build time and map size against T6 (10,000-file TS repo: < 30 s cold), plus the
+// Static graph build time and map size (SMAP, with the canonical JSON beside it) against T6 (10,000-file TS repo: < 30 s cold), plus the
 // plan's time from that map. Correctness lives in the test suite; this only measures.
 //
 //   node bench/static-graph.ts                synthetic 10,000-file TS monorepo (git fast-import)
@@ -18,11 +18,11 @@ import {
   buildStaticMap,
   canonicalJson,
   canonicalJsonPretty,
+  decodeSmap,
+  encodeSmap,
   GitVfs,
   isLexed,
   lsTree,
-  mapGraph,
-  parseMap,
   readBlobs,
   readObjectFormat,
   selectStatic,
@@ -135,11 +135,11 @@ const out = mkdtempSync(join(tmpdir(), 'trommel-bench-map-'));
 
 try {
   // 1. The CLI, cold, in a fresh process: what CI pays.
-  const cli = await time(() => spawnSync(process.execPath, [CLI, 'graph', '--rev', rev, '--out', join(out, 'map.json')], { cwd: dir, encoding: 'utf8' }));
+  const cli = await time(() => spawnSync(process.execPath, [CLI, 'graph', '--rev', rev, '--out', join(out, 'map.smap')], { cwd: dir, encoding: 'utf8' }));
   if (cli.result.status !== 0) {
     throw new Error(`trommel graph failed: ${cli.result.stderr}`);
   }
-  const mapBytes = statSync(join(out, 'map.json')).size;
+  const mapBytes = statSync(join(out, 'map.smap')).size;
 
   // 2. The same build in stages, in this process.
   const objectFormat = await readObjectFormat(dir);
@@ -151,30 +151,30 @@ try {
   const blobs = await time(() => readBlobs(dir, lexed.map((path) => vfs.result.oid(path)!)));
   const sources = new Map(lexed.map((path) => [path, blobs.result.get(vfs.result.oid(path)!)!]));
   const sourceBytes = [...sources.values()].reduce((sum, bytes) => sum + bytes.length, 0);
-  const map = parseMap(readFileSync(join(out, 'map.json'), 'utf8'));
+  const { map } = decodeSmap(readFileSync(join(out, 'map.smap')));
   const tests = [...map.tests];
   const build = await time(() => buildStaticMap({ objectFormat, index, vfs: vfs.result, sources, tests, global: DEFAULT_GLOBAL }));
+  const encode = await time(() => encodeSmap(build.result));
   const serialize = await time(() => canonicalJson(build.result));
   const edges = Object.values(map.edges).reduce((sum, edgesOut) => sum + Object.keys(edgesOut).length, 0);
 
-  // 3. The plan from that map: read, validate, build the CSR graph, diff and select.
+  // 3. The plan from that map: decode it (which checks it and gives the CSR graph), diff and select.
   let plan: Record<string, number> | null = null;
   const headRev = synthetic?.head ?? null;
   if (headRev !== null) {
-    const parse = await time(() => parseMap(serialize.result));
-    const graph = await time(() => mapGraph(parse.result));
+    const decode = await time(() => decodeSmap(encode.result));
+    const base = decode.result;
     const head = TreeIndex.build(await lsTree(dir, headRev));
     const headVfs = await GitVfs.load(dir, head);
-    const select = await time(() => selectStatic(parse.result, { objectFormat, index: head, vfs: headVfs, tests, config: null }, {}));
+    const select = await time(() => selectStatic(base.map, { objectFormat, index: head, vfs: headVfs, tests, config: null }, {}, base.graph));
     const addedIndex = TreeIndex.build(await lsTree(dir, synthetic!.added));
     const addedVfs = await GitVfs.load(dir, addedIndex);
-    const selectAdded = await time(() => selectStatic(parse.result, { objectFormat, index: addedIndex, vfs: addedVfs, tests, config: null }, {}));
+    const selectAdded = await time(() => selectStatic(base.map, { objectFormat, index: addedIndex, vfs: addedVfs, tests, config: null }, {}, base.graph));
     plan = {
-      parseMs: parse.ms,
-      graphMs: graph.ms,
+      decodeMs: decode.ms,
       selectMs: select.ms,
       affected: select.result.affected.length,
-      graphNodes: graph.result.nodeCount,
+      graphNodes: base.graph.nodeCount,
       // A head that adds a file: every hub is recomputed.
       selectAddedMs: selectAdded.ms,
       affectedAdded: selectAdded.result.affected.length,
@@ -194,8 +194,9 @@ try {
     edges,
     uncertainFiles: Object.keys(map.uncertain).length,
     mapBytes,
+    jsonBytes: serialize.result.length,
     cliColdMs: cli.ms,
-    stagesMs: { lsTree: listing.ms, gitVfsLoad: vfs.ms, readBlobs: blobs.ms, buildStaticMap: build.ms, serialize: serialize.ms },
+    stagesMs: { lsTree: listing.ms, gitVfsLoad: vfs.ms, readBlobs: blobs.ms, buildStaticMap: build.ms, encode: encode.ms, serializeJson: serialize.ms },
     plan,
     environment: { node: process.version, os: `${platform()} ${release()}`, cpu: cpus()[0]?.model ?? 'unknown', git: git(dir, ['--version']) },
   };

@@ -20,7 +20,7 @@ const selection: Selection = {
 };
 const report = buildReport({
   selection,
-  base: { map: '.trommel/map/map.json', rootTree: 'a'.repeat(40) },
+  base: { map: '.trommel/map/map.smap', rootTree: 'a'.repeat(40) },
   head: { rev: 'HEAD', rootTree: 'b'.repeat(40) },
   uncertainCauses: { 'u:src/x.ts': ['line 3: ./gone is unresolved (not found)'] },
   notPlanned: ['e2e'],
@@ -117,7 +117,7 @@ describe('summaryOf', () => {
   });
 
   it('says so when it fell back to running everything', () => {
-    const fallback = buildReport({ selection: runAll(['t/a.test.ts'], 'no map at .trommel/map/map.json'), base: null, head: { rev: 'HEAD', rootTree: 'b'.repeat(40) }, notPlanned: [], shards: 1, fallback: 'no map at .trommel/map/map.json' });
-    expect(summaryOf(fallback)).toContain('Trommel could not use a map (no map at .trommel/map/map.json), so it ran all 1 test files.');
+    const fallback = buildReport({ selection: runAll(['t/a.test.ts'], 'no map at .trommel/map/map.smap'), base: null, head: { rev: 'HEAD', rootTree: 'b'.repeat(40) }, notPlanned: [], shards: 1, fallback: 'no map at .trommel/map/map.smap' });
+    expect(summaryOf(fallback)).toContain('Trommel could not use a map (no map at .trommel/map/map.smap), so it ran all 1 test files.');
   });
 });

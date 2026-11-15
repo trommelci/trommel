@@ -1,5 +1,6 @@
 // The `trommel` commands. Everything is read from git objects at a revision (never the working
-// tree), and everything printed is canonical JSON, so the same inputs give the same bytes.
+// tree), and everything printed is canonical JSON, so the same inputs give the same bytes. The map
+// on disk is a SMAP file (ADR-0009, docs/smap-format.md), which has that property too.
 //
 // Exit codes: 0 success (a plan that fell back to running everything is a success: it must never
 // block CI), 1 an error, 2 a usage error.
@@ -10,13 +11,14 @@ import {
   buildStaticMap,
   canonicalJson,
   canonicalJsonPretty,
+  decodeSmap,
   diffLockfiles,
+  encodeSmap,
   GitVfs,
   isLexed,
   lsTree,
   MapError,
   merkleDiff,
-  parseMap,
   readBlobs,
   readLockfile,
   readObjectFormat,
@@ -27,7 +29,7 @@ import {
   type LockfileState,
   type ObjectFormat,
   type Selection,
-  type TrommelMap,
+  type Smap,
 } from '@trommel/core';
 
 import { parseCommand, planMode, USAGE, UsageError, type Command } from './args.ts';
@@ -123,18 +125,23 @@ async function graph(command: Extract<Command, { name: 'graph' }>, io: Io): Prom
     declared: rules.declared,
     config: snapshot.config?.oid ?? null,
   });
-  const text = `${canonicalJson(map)}\n`;
+  // The file is SMAP; without --out the same map is printed as canonical JSON, for a person to read.
+  let written: string;
   if (command.out === null) {
+    const text = `${canonicalJson(map)}\n`;
     io.stdout(text);
+    written = `${text.length} bytes of JSON`;
   } else {
+    const bytes = encodeSmap(map);
     const out = resolve(io.cwd, command.out);
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, text);
+    writeFileSync(out, bytes);
+    written = `${bytes.length} bytes of SMAP`;
   }
   const edges = Object.values(map.edges).reduce((sum, out) => sum + Object.keys(out).length, 0);
   io.stderr(
     `trommel graph: ${files.length} files, ${lexed.length} lexed; ${Object.keys(map.nodes).length} nodes, ${edges} edges; ` +
-      `${map.tests.length} tests, ${Object.keys(map.uncertain).length} uncertain files; ${text.length} bytes in ${Math.round(performance.now() - started)} ms\n`,
+      `${map.tests.length} tests, ${Object.keys(map.uncertain).length} uncertain files; ${written} in ${Math.round(performance.now() - started)} ms\n`,
   );
   return 0;
 }
@@ -180,12 +187,12 @@ async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promis
   planMode(command, fallback === undefined ? config.selection?.mode : undefined);
   const rules = rulesOf(config);
   const { tests, notPlanned } = discoverTests(head.vfs.files(), config);
-  const mapPath = `${command.map.replace(/[\\/]+$/, '')}/map.json`;
+  const mapPath = `${command.map.replace(/[\\/]+$/, '')}/map.smap`;
 
-  let map: TrommelMap | null = null;
+  let smap: Smap | null = null;
   if (fallback === undefined) {
     try {
-      map = parseMap(readFileSync(resolve(io.cwd, mapPath), 'utf8'));
+      smap = decodeSmap(readFileSync(resolve(io.cwd, mapPath)));
     } catch (error) {
       if (error instanceof MapError) {
         fallback = `the map at ${mapPath} is invalid: ${error.message}`;
@@ -197,12 +204,12 @@ async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promis
     }
   }
   let selection: Selection;
-  if (map === null) {
+  if (smap === null) {
     selection = runAll(tests, fallback!);
   } else {
     try {
       const state = { objectFormat: head.objectFormat, index: head.index, vfs: head.vfs, tests, config: head.config?.oid ?? null };
-      selection = selectStatic(map, state, { ignore: rules.ignore, alwaysRun: rules.alwaysRun });
+      selection = selectStatic(smap.map, state, { ignore: rules.ignore, alwaysRun: rules.alwaysRun }, smap.graph);
     } catch (error) {
       // A bug must not block CI either: run everything and say why.
       io.stderr(`trommel: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
@@ -213,9 +220,9 @@ async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promis
 
   const report = buildReport({
     selection,
-    base: map === null ? null : { map: mapPath, rootTree: map.rootTree },
+    base: smap === null ? null : { map: mapPath, rootTree: smap.map.rootTree },
     head: { rev: command.head, rootTree: head.index.rootOid },
-    ...(map === null ? {} : { uncertainCauses: map.uncertain }),
+    ...(smap === null ? {} : { uncertainCauses: smap.map.uncertain }),
     notPlanned,
     shards: command.shards ?? rules.shards,
     ...(fallback === undefined ? {} : { fallback }),

@@ -1,7 +1,7 @@
 # Hand-off: Trommel milestone M1, after roadmap day 10
 
 - **Written:** 2026-11-11 (UTC), at `main` = `00fea91` plus this document.
-- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for the SMAP v0 codec (DECISIONS 33): item 4 is half done, the codec is built and the CLI does not use it yet.
+- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for SMAP v0 (DECISIONS 33 and 34): item 4 is done, and the map on disk is a SMAP file.
 - **For:** whoever continues the implementation, person or agent.
 - **Reading order:** this file, then [DECISIONS.md](DECISIONS.md), then the docs it points to.
 
@@ -51,13 +51,19 @@
 - **The SMAP v0 codec (2026-11-15, DECISIONS 33):**
   - `packages/core/src/smap/` reads and writes the binary container of ADR-0009: the snapshot layer and the static layer. [docs/smap-format.md](docs/smap-format.md) specifies the bytes.
   - It is a serialization of the map the builder already gives. A map decodes to the same canonical JSON, and a file that decodes re-encodes to the same bytes.
-  - **Nothing calls it yet.** `trommel graph` still writes `.trommel/map/map.json`, and `trommel plan` still reads it. The cut-over is the next pull request (§8).
-  - The engine stays `trommel-static-3`, so this change costs no run-all plan.
+  - It landed with no caller, so on its own it changed no plan. The engine stays `trommel-static-3`.
   - ADR-0009 gained two corrections in place: hubs store a hash, and an unpaired surrogate in a key is three bytes.
   - 717 tests pass in 36 files.
+- **The cut-over to SMAP (2026-11-15, DECISIONS 34):**
+  - `trommel graph --out` writes `.trommel/map/map.smap`, and `trommel plan --map` reads it and takes the decoded graph. Without `--out`, `trommel graph` still prints the same map as canonical JSON. `trommel.yml` builds and caches the SMAP file.
+  - The JSON reader `parseMap` is gone. A directory that holds only a `map.json` has no map.
+  - On the last 70 commits of this repository the tests that would run, their why-paths and the escalations are identical to those of the CLI on `main`: 640 of 1,973 possible test-file runs.
+  - At 10,000 files the map is 1.11 MB where the JSON was 7.07 MB, and a plan for an edit takes 0.09 s where it took 0.18 s.
+  - **Expect one run-all plan** on each branch until a push to `main` caches a SMAP map. The summary gives the cause: no map at `.trommel/map/map.smap`.
+  - 712 tests pass in 36 files: the 14 tests of the JSON reader went with it.
 
 **First four things to do:**
-1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 3 of its worklist are done, and item 4 is half done.
+1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 4 of its worklist are done. M2 is item 5, and the rest of M1 is in §8.
 2. Check that the collector is making progress (§5.3): coverage should grow with each daily run.
 3. Start the rest of M1 (§8), in the order §1.1 gives. Every PR now shows Trommel's shadow summary: read it, and record any would-skip that should have run.
 4. Take the open decisions to Ojas (§10).
@@ -86,9 +92,9 @@
 1. ~~**Selector backstops** (`core/select/plan.ts`).~~ Done on 2026-11-14 (DECISIONS 29). An unmapped input makes every node of its owning package changed, and a changed node that no test reaches is one. The owning package is the deepest workspace member, not the nearest `package.json`, which closed a hole: a fixture repository with its own `package.json` had been a package with no tests. `inputs.ignore` covers both kinds, and the summary lists what it exempted. On this repository's last 70 commits the rule fired on 3, each within one package.
 2. ~~**Environment out of the map** (`core/graph/static.ts`).~~ Done on 2026-11-14 (DECISIONS 28). The `e:` nodes are gone from the map and from static selection, the engine id is `trommel-static-2`, and `golden.test.ts` pins a fixture map's SHA-256 on every CI OS. When a later item changes that hash, it must also say whether the engine id changes.
 3. ~~**Resolution hubs** (`core/resolve`, `core/graph/static.ts`).~~ Done on 2026-11-14 (DECISIONS 32). `r:<path>` and `c:<dir>` hubs hold the probes every importer shares, so nodes fall 81% and edges 79% at 10,000 files, and selections on this repository's last 70 commits are unchanged. The review's finding L3 is fixed with it. The engine is `trommel-static-3`, and the golden hash moved with it.
-4. **SMAP v0:** the container, the snapshot layer and the static layer only. The record layer is a new section in M3.
-   - ~~The codec.~~ Done on 2026-11-15 (DECISIONS 33): `encodeSmap` and `decodeSmap` in `packages/core/src/smap/`, the specification in [docs/smap-format.md](docs/smap-format.md), three golden vectors and a fuzzer. Hub nodes are ordinary nodes to it: a key and a stored hash.
-   - **The cut-over. This is next.** `trommel graph --out` writes SMAP, `trommel plan --map` reads `map.smap` and takes the decoded graph, `trommel.yml` and `bench/static-graph.ts` follow, and `parseMap` goes. The design (§8) and the plan (Part 2) under [docs/superpowers/](docs/superpowers/) list the steps. Prove it by replaying the last 70 commits against the CLI on `main`.
+4. ~~**SMAP v0:** the container, the snapshot layer and the static layer only.~~ Done on 2026-11-15 (DECISIONS 33 and 34). The record layer is a new section in M3.
+   - The codec (DECISIONS 33): `encodeSmap` and `decodeSmap` in `packages/core/src/smap/`, the specification in [docs/smap-format.md](docs/smap-format.md), three golden vectors and a fuzzer. Hub nodes are ordinary nodes to it: a key and a stored hash.
+   - The cut-over (DECISIONS 34): `trommel graph --out` writes SMAP, `trommel plan --map` reads `map.smap` and takes the decoded graph, `trommel.yml` and `bench/static-graph.ts` follow, and `parseMap` is gone. The last 70 commits select the same tests as with the CLI on `main`.
 5. **M2:** the record schema of ADR-0005, three capture scopes, the runner's reported configuration, and resolution evidence for non-literal imports.
 6. **M3:** `trommel run` with discovery reconciliation and the per-shard environment and tree check; base-free proofs; the Lite-mode key layout, `cache-mode` and origin check.
 
@@ -155,12 +161,12 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `717 passed` from `npm test` (after DECISIONS 33), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `712 passed` from `npm test` (after DECISIONS 34), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
 ```bash
-node packages/cli/src/main.ts graph --out .trommel/map/map.json
+node packages/cli/src/main.ts graph --out .trommel/map/map.smap
 ```
 
 ```bash
@@ -182,8 +188,8 @@ node packages/cli/src/main.ts plan --mode shadow --static --map .trommel/map
 | `packages/core/src/lockfile/npm.ts` | package-lock v2/v3 → `p:npm:<install location>`. Node-style `locate`, package-to-package dependencies, diff, lockfile detection; other formats are `unparseable` (L3) | `parseNpmLockfile`, `NpmLockfile.locate/dependencies`, `diffLockfiles`, `detectLockfile` | `test/lockfile/npm.test.ts` (16) |
 | `packages/core/src/index.ts` | The package's public exports. Workspace packages export `./src/*.ts` directly (DECISIONS 3) | — | — |
 | `packages/core/src/git/{cat-file,vfs}.ts` | `git cat-file --batch` parser; `GitVfs`, the resolver's `Vfs` over a `TreeIndex` with blobs from git | `readBlobs(cwd, oids)`, `CatFileParser`, `GitVfs.load`, `repoRoot` | `test/git/cat-file.test.ts`, `test/git/vfs.test.ts`, `test/git/git.test.ts` |
-| `packages/core/src/graph/{static,map}.ts` | The static graph builder and the M1 map (canonical JSON): node keys and hashes, edges, `u:` nodes (DECISIONS 23), `r:` and `c:` hubs (DECISIONS 32). A function of the tree, the config and the engine only (DECISIONS 28) | `buildStaticMap`, `ENGINE`, `hubHash`, `isHub`, `parseMap`, `mapGraph`, `mapIndex`, `readLockfile`, `isModule`/`isLexed` | `test/graph/static.test.ts`, `test/graph/map.test.ts`, `test/graph/golden.test.ts` (the pinned fixture hash) |
-| `packages/core/src/smap/{bytes,container,smap}.ts` | SMAP v0 (ADR-0009, [docs/smap-format.md](docs/smap-format.md), DECISIONS 33): varints, strings and front coding; the container with its trailer and layer addresses; the snapshot and static layers to and from `TrommelMap`. No caller yet | `encodeSmap`, `decodeSmap` (map, graph, layer addresses), `SmapEncodeError` | `test/smap/{bytes,container,smap,golden,fuzz}.test.ts` (213); `test/fixtures/smap/golden.smap` |
+| `packages/core/src/graph/{static,map}.ts` | The static graph builder and the map as the planner holds it (`TrommelMap`; on disk it is SMAP, and `trommel graph` prints it as canonical JSON): node keys and hashes, edges, `u:` nodes (DECISIONS 23), `r:` and `c:` hubs (DECISIONS 32). A function of the tree, the config and the engine only (DECISIONS 28) | `buildStaticMap`, `ENGINE`, `hubHash`, `isHub`, `mapGraph`, `mapIndex`, `MapError`, `readLockfile`, `isModule`/`isLexed` | `test/graph/static.test.ts`, `test/graph/map.test.ts`, `test/graph/golden.test.ts` (the pinned fixture hash) |
+| `packages/core/src/smap/{bytes,container,smap}.ts` | SMAP v0 (ADR-0009, [docs/smap-format.md](docs/smap-format.md), DECISIONS 33): varints, strings and front coding; the container with its trailer and layer addresses; the snapshot and static layers to and from `TrommelMap`. `trommel graph --out` writes it, and `trommel plan` reads it (DECISIONS 34) | `encodeSmap`, `decodeSmap` (map, graph, layer addresses), `SmapEncodeError` | `test/smap/{bytes,container,smap,golden,fuzz}.test.ts` (213); `test/fixtures/smap/golden.smap` |
 | `packages/core/src/environment.ts` | Environment components for the M2 recorder: runtime, platform and tracked variables. No caller yet, and lint keeps it out of the graph and selection modules (DECISIONS 28) | `environment`, `envHash` | `test/environment.test.ts` (6) |
 | `packages/core/src/select/plan.ts` | Δ(S,H) from a map to a head snapshot, escalations L1/L3, reverse BFS with why-paths (DECISIONS 24). Unmapped inputs seed their owning package (DECISIONS 29). Hubs are recomputed at H when a listing changed (DECISIONS 32) | `selectStatic`, `runAll` | `test/select/plan.test.ts` (examples plus the 2,000-run soundness property) |
 | `packages/cli/src/` | `trommel graph`, `diff`, `plan`: `args.ts` (parseArgs, kickoff gap 1), `config.ts` (§5.1 validation, test discovery), `report.ts` (plan JSON, matrix, summary), `cli.ts`, `main.ts`. `bin: trommel` | `node packages/cli/src/main.ts --help` | `test/{args,config,report,cli}.test.ts` (`cli.test.ts` is end to end) |
@@ -360,7 +366,7 @@ GH_TOKEN="$(gh auth token)" node tools/corpus/src/main.ts --config tools/corpus/
    6. **Test files.** Use the `projects` in `trommel.config.json` when present. Otherwise use Vitest's default include, `**/*.{test,spec}.?(c|m)[jt]s?(x)`, excluding `node_modules` and `**/fixtures/**`. For this repository that is `packages/*/test/**/*.test.ts`, `tools/*/test/**/*.test.ts` and `scripts/test/**/*.test.ts`.
    7. **Δ(S,H).** Use `merkleDiff` for files and listings, recompute the hashes of the `d:`, `g:` and `p:` nodes, and compare them with the map's.
    8. **Selection.** Run `reverseReach(graph, Δ ∪ u-nodes)`. The affected tests run; give each a `whyPath`.
-5. **The map file.** Until SMAP v0 replaces it later in M1, it is canonical JSON: `version`, `objectFormat`, `rootTree`, sorted `nodes` (key → hash), sorted `edges` as `[from, to, provenance]`, `tests`, and the uncertain nodes. Store it at `.trommel/map/map.json`; `.trommel/` is already in `.gitignore`.
+5. **The map file.** Until SMAP v0 replaces it later in M1, it is canonical JSON: `version`, `objectFormat`, `rootTree`, sorted `nodes` (key → hash), sorted `edges` as `[from, to, provenance]`, `tests`, and the uncertain nodes. Store it at `.trommel/map/map.json`; `.trommel/` is already in `.gitignore`. **Since 2026-11-15 the file is SMAP, at `.trommel/map/map.smap` (DECISIONS 34).** `trommel graph` without `--out` still prints this JSON.
 
 ### 6.2 The CLI (`packages/cli`, zero runtime dependencies)
 
@@ -400,7 +406,7 @@ The spec is [roadmap §5](docs/roadmap.md) plus architecture §5.3 and §5.4. Bu
   - Each shard runs **its exact file list**. There is no runner plugin until M3, and ADR-0004 forbids Vitest's positional substring filters. Instead, have this repository's `vitest.config.ts` read the list from an env var or a file and set `include` to it (escape any glob characters).
   - In shadow mode every file runs.
 - **`trommel-gate` job.** `needs: [plan, test]` and `if: always()`; it fails unless every shard succeeded. Ask Ojas whether to make it the single required check.
-- **On a push to `main`.** Build the map (`trommel graph --out .trommel/map/map.json`) and run `actions/cache/save@v6` with key `trommel-map-${{ github.sha }}`.
+- **On a push to `main`.** Build the map (`trommel graph --out .trommel/map/map.smap`, a SMAP file since DECISIONS 34) and run `actions/cache/save@v6` with key `trommel-map-${{ github.sha }}`.
 
 **Done when** a PR shows the shadow summary with why-paths, and the fallback works. Demonstrating both needs three steps:
 1. A first PR, made before any map exists, shows the run-all fallback.
@@ -416,10 +422,10 @@ These come from the M1 row of [roadmap §1](docs/roadmap.md):
   - 24 of the 26 vetted repositories use them (19 pnpm, 5 yarn), so they gate the replay corpus in M4 ([bench/CORPUS.md](bench/CORPUS.md)).
   - Today `detectLockfile` reports both as unparseable (L3).
   - The YAML subset in `core/resolve/yaml.ts` is too small for `pnpm-lock.yaml`.
-- **The four M1 items of §1.1,** before SMAP: ~~selector backstops~~ (done, DECISIONS 29), ~~the environment out of the map~~ (done, DECISIONS 28), ~~resolution hubs~~ (done, DECISIONS 32), then SMAP v0 itself: its codec is done (DECISIONS 33) and its cut-over is next.
-- **SMAP v0, byte-identical across OSes.**
+- **The four M1 items of §1.1,** before SMAP: ~~selector backstops~~ (done, DECISIONS 29), ~~the environment out of the map~~ (done, DECISIONS 28), ~~resolution hubs~~ (done, DECISIONS 32), then ~~SMAP v0 itself~~ (done, DECISIONS 33 and 34).
+- ~~**SMAP v0, byte-identical across OSes.**~~ Done (DECISIONS 33 and 34).
   - The codec is built, and `smap/golden.test.ts` pins the SMAP file of the golden repository on every CI OS: its length, its SHA-256 and the address of each layer. `graph/golden.test.ts` still pins the same map as canonical JSON, so a failure in one alone says which side moved.
-  - **Still to do: the cut-over** (§1.1 item 4). Until then the CLI and `trommel.yml` use the JSON map.
+  - The CLI and `trommel.yml` use it: the map on disk is `.trommel/map/map.smap`.
   - The provenance width is settled: one byte per edge, three bits defined (ADR-0009, DECISIONS 27).
   - v0 is the container, the snapshot layer and the static layer. The record layer comes in M3.
 - **`trommel explain`.**
@@ -442,7 +448,7 @@ These come from the M1 row of [roadmap §1](docs/roadmap.md):
 | Lexer, generative | 2,000 programs plus 3,000 arbitrary inputs | `packages/core/test/lex/lexer.test.ts` |
 | P1, P3 and why-paths | 2,000 / 2,000 / 1,000 random graphs | `packages/core/test/graph/graph.test.ts` |
 | Resolver evidence completeness | 400 repositories × 13 specifiers | `packages/core/test/resolve/resolver.test.ts` |
-| T6: `trommel graph` cold, synthetic 10,000-file TS monorepo (42 MB) | **1.8 s** with hubs (target 30 s); 20,107 nodes, 145,041 edges, 7.1 MB JSON map; plan from it 0.18 s, or 0.36 s when a file is added. Before hubs, the same day: 2.5 s, 106,388 nodes, 683,501 edges, 26.7 MB, plan 0.84 s | `bench/results/2026-11-14-static-graph-win32.json`, `…-before-hubs-win32.json` |
+| T6: `trommel graph` cold, synthetic 10,000-file TS monorepo (42 MB) | **1.8 s** with hubs (target 30 s); 20,107 nodes, 145,041 edges, 1.11 MB SMAP map (7.07 MB as JSON); plan from it 0.09 s, or 0.24 s when a file is added (0.18 s and 0.36 s from the JSON map). Before hubs, the same day: 2.5 s, 106,388 nodes, 683,501 edges, 26.7 MB, plan 0.84 s | `bench/results/2026-11-15-static-graph-smap-win32.json`, `2026-11-14-static-graph-win32.json`, `…-before-hubs-win32.json` |
 | `trommel graph` cold on this repository at `65a5958` | 0.37 s; 514 nodes, 1,044 edges, 142 KB (before hubs: 1,466, 2,790, 263 KB) | `bench/results/2026-11-14-static-graph-trommel-win32.json` |
 | Hubs against `main`'s planner, this repository's last 70 commits | Identical selections on all 70: 592 of 1,753 test-file runs | DECISIONS 32 |
 | Static selection soundness | 2,000 random repository pairs; 20 hand mutants caught | `packages/core/test/select/plan.test.ts` |
@@ -491,7 +497,8 @@ These are honest limits, not bugs. Each one errs towards running more tests.
   - Global inputs are found by conventional names (`vitest.setup.*`, `jest.setup.*` and runner configs). A setup file with another name must be listed in `inputs.global`.
   - Nothing compares environments. The map and the static plan hold nothing about any machine (DECISIONS 28), and the check in the job that runs the test arrives with `trommel run` (M3). Until then a would-skip says nothing about the Node version or the OS, one more reason it stays unproven.
   - `env.track` in `trommel.config.json` is validated and used for nothing until the M2 recorder reads it.
-  - The JSON map is about 0.7 KB per file (7.1 MB at 10,000 files, with hubs), and a plan re-parses it and rebuilds the CSR arrays (0.12 s at 10,000 files). SMAP fixes both. Extraction is not cached, so incremental builds are as slow as cold ones.
+  - The map is a SMAP file of about 0.11 KB per file (1.11 MB at 10,000 files), and a plan decodes it in 0.05 s (DECISIONS 34). The decoder still builds the node and edge objects of `TrommelMap`, which the planner reads; a leaner model can wait for M3, when records reshape the planner. Extraction is not cached, so incremental builds are as slow as cold ones.
+  - The cache key in `trommel.yml` does not name the map format. A cache saved before the cut-over holds only `map.json`, which reads as "no map" and runs everything once. The key layout of ADR-0021 is M3 work.
   - When any directory listing changed, a plan recomputes every `r:` and `c:` hub at the head (0.19 s at 10,000 files). Hubs are not yet limited to the directories that changed.
   - A probed directory's listing is part of its hub's hash, as its `d:` node was, so a file added to `src/d/` reruns the importers of `./d` even when no candidate changed (DECISIONS 32).
   - Only npm lockfiles are parsed. With pnpm or yarn, every bare import depends on the lockfile file, and any change to it runs everything (L3).
@@ -575,6 +582,7 @@ These are honest limits, not bugs. Each one errs towards running more tests.
 | 31 | The roadmap has no dates or commit budgets: a milestone is done when its exit criteria are met |
 | 32 | Resolution hubs `r:` and `c:`, engine `trommel-static-3`; the package-root lookup recorded (review L3) |
 | 33 | The SMAP v0 codec: container, snapshot layer and static layer; which hashes are stored; unpaired surrogates; the engine id stays |
+| 34 | The cut-over: the map on disk is SMAP; the JSON reader removed; the 70-commit replay; SMAP numbers at 10,000 files |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 

@@ -1,7 +1,7 @@
 # SMAP v0: design
 
 - **Written:** 2026-11-14, at `main` = `f672238` (resolution hubs merged, engine `trommel-static-3`).
-- **Status:** approved by Ojas on 2026-11-14. The codec (the first pull request of §4) is built: [DECISIONS.md](../../../DECISIONS.md) entry 33 records it, and [docs/smap-format.md](../../smap-format.md) is the specification that §5 became.
+- **Status:** approved by Ojas on 2026-11-14. Both pull requests of §4 are built: [DECISIONS.md](../../../DECISIONS.md) entries 33 (the codec) and 34 (the cut-over) record them, and [docs/smap-format.md](../../smap-format.md) is the specification that §5 became.
 - **Scope:** item 4 of [HANDOFF.md](../../../HANDOFF.md) §1.1, the last of the four M1 items that change what a map contains.
 - **Decided already, and not reopened here:** [ADR-0009](../../adr/0009-smap-binary-map-format.md) as corrected on 2026-11-13. This document fills in what the ADR leaves to the builder: the bytes, the API, the tests and how it lands.
 
