@@ -43,7 +43,8 @@ interface Block {
   readonly version: string;
   readonly content: { readonly integrity: string } | { readonly resolved: string };
   /** name → range, in file order. */
-  readonly dependencies: ReadonlyMap<string, string>;
+  /** name → the ranges listed for it (more than one when both dependency fields list it). */
+  readonly dependencies: ReadonlyMap<string, readonly string[]>;
 }
 
 /** A token at `at`: a double-quoted JSON string, or bare up to the next space. Returns it and where it ended. */
@@ -118,7 +119,9 @@ interface Open {
   readonly descriptors: string[];
   readonly name: string;
   readonly fields: Map<string, string>;
-  readonly dependencies: Map<string, string>;
+  readonly dependencies: Map<string, string[]>;
+  /** The names listed in the block that is open. */
+  readonly listed: Set<string>;
   readonly seen: Set<string>;
   block: 'dependencies' | 'optionalDependencies' | null;
 }
@@ -194,7 +197,7 @@ function read(text: string, workspace: ClassicWorkspace): ResolvedModel {
           refuse(`line ${number}: the descriptors of one entry name two packages (${JSON.stringify(name)} and ${JSON.stringify(descriptorName(descriptor, number))})`);
         }
       }
-      open = { line: number, descriptors, name, fields: new Map(), dependencies: new Map(), seen: new Set(), block: null };
+      open = { line: number, descriptors, name, fields: new Map(), dependencies: new Map(), listed: new Set(), seen: new Set(), block: null };
     } else if (open === null) {
       refuse(`line ${number}: an indented line outside an entry`);
     } else if (indent === 2) {
@@ -210,6 +213,7 @@ function read(text: string, workspace: ClassicWorkspace): ResolvedModel {
           refuse(`line ${number}: the block ${JSON.stringify(key)} is not one this reader knows`);
         }
         open.block = key as Open['block'];
+        open.listed.clear();
       } else if (BLOCKS.has(key)) {
         refuse(`line ${number}: ${key} has a value, not lines`);
       } else {
@@ -220,10 +224,16 @@ function read(text: string, workspace: ClassicWorkspace): ResolvedModel {
       if (range === null) {
         refuse(`line ${number}: a dependency with no range`);
       }
-      if (open.dependencies.has(name)) {
-        refuse(`line ${number}: the dependency ${JSON.stringify(name)} appears twice in one entry`);
+      if (open.listed.has(name)) {
+        refuse(`line ${number}: the dependency ${JSON.stringify(name)} appears twice in one block`);
       }
-      open.dependencies.set(name, range);
+      open.listed.add(name);
+      const ranges = open.dependencies.get(name);
+      if (ranges === undefined) {
+        open.dependencies.set(name, [range]);
+      } else {
+        ranges.push(range);
+      }
     } else {
       refuse(`line ${number}: an indentation of ${indent} that this reader does not know`);
     }
@@ -269,8 +279,15 @@ function read(text: string, workspace: ClassicWorkspace): ResolvedModel {
   const entries = new Map<string, ModelEntry>();
   for (const block of blocks) {
     const dependencies = new Map<string, Ref>();
-    for (const [name, range] of block.dependencies) {
-      dependencies.set(name, resolve(name, range));
+    for (const [name, ranges] of block.dependencies) {
+      // dependencies and optionalDependencies may both list a name: they must agree on what it is.
+      const [first, ...rest] = ranges.map((range) => resolve(name, range));
+      for (const other of rest) {
+        if (JSON.stringify(other) !== JSON.stringify(first)) {
+          refuse(`${block.name}@${block.version}: ${JSON.stringify(name)} is listed twice, with different ranges that resolve differently`);
+        }
+      }
+      dependencies.set(name, first!);
     }
     entries.set(`${block.name}@${block.version}`, { name: block.name, content: block.content, dependencies, peers: [] });
   }

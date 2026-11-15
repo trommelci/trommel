@@ -159,6 +159,27 @@ describe('parseYarnClassicLockfile', () => {
     expect(entryOf(read(text), 'a@1.0.0').content).toEqual({ resolved: 'https://x/a' });
   });
 
+  describe('a name in both dependencies and optionalDependencies', () => {
+    const both = (optional: string): string =>
+      `${HEADER}a@^1.0.0:\n  version "1.0.0"\n  resolved "https://x/a"\n  dependencies:\n    b "^2.0.0"\n  optionalDependencies:\n    b "${optional}"\n\n` +
+      `b@^2.0.0, b@~2.0.0:\n  version "2.0.0"\n  resolved "https://x/b"\n\nb@^3.0.0:\n  version "3.0.0"\n  resolved "https://x/b3"\n`;
+
+    it('is one reference when both fields resolve it the same', () => {
+      expect(entryOf(read(both('^2.0.0')), 'a@1.0.0').dependencies).toEqual(new Map([['b', { kind: 'entry', id: 'b@2.0.0' }]]));
+      expect(entryOf(read(both('~2.0.0')), 'a@1.0.0').dependencies.get('b')).toEqual({ kind: 'entry', id: 'b@2.0.0' });
+    });
+
+    it('is refused when the fields resolve it to different references', () => {
+      expect(refuse(both('^3.0.0')).reason).toMatch(/"b".*twice/);
+      expect(refuse(both('^9.0.0')).reason).toMatch(/"b".*twice/);
+    });
+
+    it('is still refused when one block lists it twice', () => {
+      const text = `${HEADER}a@^1.0.0:\n  version "1.0.0"\n  resolved "https://x/a"\n  dependencies:\n    b "^2.0.0"\n    b "^2.0.0"\n`;
+      expect(refuse(text).reason).toMatch(/line \d+/);
+    });
+  });
+
   it('an importer directory the model cannot hold is refused by modelProblem', () => {
     const result = parseYarnClassicLockfile(HEADER, { importers: new Map([['.', new Map()]]), packages: new Map() });
     expect(result).toMatchObject({ kind: 'unparseable', format: 'yarn' });
