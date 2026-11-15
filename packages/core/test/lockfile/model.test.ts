@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { canonicalJson } from '../../src/canonical-json.ts';
 import type { Lockfile } from '../../src/lockfile/lockfile.ts';
-import { lockfileFromModel, lookupKey, nameOfId } from '../../src/lockfile/model.ts';
+import { lockfileFromModel, lookupKey, modelProblem, nameOfId } from '../../src/lockfile/model.ts';
 import type { ModelEntry, Ref, ResolvedModel } from '../../src/lockfile/model.ts';
 
 const entry = (id: string): Ref => ({ kind: 'entry', id });
@@ -523,11 +523,67 @@ describe('the order a model was built in', () => {
         for (const key of [...lock.nodes.keys(), ...NAMES.map((name) => `p:pnpm:${name}@*`)]) {
           for (const target of lock.dependencies(key)) {
             expect(lock.hash(target), `${key} → ${target}`).not.toBeUndefined();
+            // Stronger: a target is a node the lockfile lists, so a planner that walks nodes reaches it.
+            expect(lock.nodes.has(target), `${key} → ${target}`).toBe(true);
           }
         }
       }),
       { numRuns: 300 },
     );
+  });
+
+  it('a key with the same hash in two lockfiles has the same dependencies in both (§6.3)', () => {
+    fc.assert(
+      fc.property(specArb, specArb, (left, right) => {
+        const a = build(left);
+        const b = build(right);
+        const keys = new Set([...a.nodes.keys(), ...b.nodes.keys(), ...NAMES.map((name) => `p:pnpm:${name}@*`)]);
+        for (const key of keys) {
+          const hash = a.hash(key);
+          if (hash !== undefined && hash === b.hash(key)) {
+            expect(a.dependencies(key), key).toEqual(b.dependencies(key));
+          }
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+});
+
+describe('modelProblem', () => {
+  const ok = (extra: Partial<ResolvedModel> = {}): ResolvedModel => ({ ...model([['', [['a', entry('a@1.0.0')]]], ['packages/a', [['b', link('packages/b')]]]], [['a@1.0.0', { deps: [['c', entry('c@1.0.0')]] }], ['c@1.0.0', {}]]), ...extra });
+
+  it('is null for a clean model', () => {
+    expect(modelProblem(ok())).toBeNull();
+    expect(modelProblem(model([], []))).toBeNull();
+  });
+
+  it.each([
+    ['an id that contains @*', 'foo@*'],
+    ['an id that contains @* after a version', 'foo@1.0.0(bar@*)'],
+    ['the id #env', '#env'],
+  ])('refuses %s, and names it', (_title, id) => {
+    expect(modelProblem(model([], [[id, {}]]))).toContain(JSON.stringify(id));
+  });
+
+  it.each(['.', '/a', 'a/', 'a//b', '/'])('refuses the importer directory %j, and names it', (dir) => {
+    expect(modelProblem(model([[dir, []]], []))).toContain(JSON.stringify(dir));
+  });
+
+  it('accepts the root and nested directories', () => {
+    expect(modelProblem(model([['', []], ['packages/@s/a', []]], []))).toBeNull();
+  });
+
+  it('refuses an importer reference to a missing entry, and names it', () => {
+    expect(modelProblem(model([['', [['a', entry('a@9.9.9')]]]], [['a@1.0.0', {}]]))).toContain('a@9.9.9');
+  });
+
+  it('refuses an entry dependency on a missing entry, and names it', () => {
+    expect(modelProblem(model([], [['a@1.0.0', { deps: [['b', entry('b@9.9.9')]] }]]))).toContain('b@9.9.9');
+  });
+
+  it('does not mind links and unresolved references', () => {
+    expect(modelProblem(model([['', [['a', link('nowhere')], ['b', unresolved]]]], [['x@1.0.0', { deps: [['y', unresolved], ['z', link('q')]] }]]))).toBeNull();
   });
 });
 

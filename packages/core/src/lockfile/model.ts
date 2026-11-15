@@ -39,8 +39,43 @@ const ENV_KEY = 'p:pnpm:#env';
 const ANY = '@*';
 const NONE: readonly string[] = Object.freeze([]);
 
+/**
+ * Builds the lockfile a model stands for. Precondition: `modelProblem(model)` is null, so that no id
+ * contains `@*` or is `#env` (they would collide with name nodes and the env node), no importer
+ * directory is `.` or has a leading, trailing or doubled `/`, and every `entry` reference names a key of
+ * `entries`. Readers own untrusted input and enforce it; this function does not check it.
+ */
 export function lockfileFromModel(kind: 'pnpm' | 'yarn-berry' | 'yarn-classic', path: string, model: ResolvedModel): Lockfile {
   return new ModelLockfile(kind, path, model);
+}
+
+/** A reason the model breaks lockfileFromModel's preconditions, or null. Every reader returns Unparseable with this reason when it is not null. */
+export function modelProblem(model: ResolvedModel): string | null {
+  for (const id of model.entries.keys()) {
+    if (id.includes(ANY) || id === '#env') {
+      return `the id ${JSON.stringify(id)} contains "@*" or is "#env"`;
+    }
+  }
+  for (const dir of model.importers.keys()) {
+    if (dir === '.' || dir.startsWith('/') || dir.endsWith('/') || dir.includes('//')) {
+      return `the importer directory ${JSON.stringify(dir)} is not a normalised relative directory`;
+    }
+  }
+  for (const [dir, declared] of model.importers) {
+    for (const [name, ref] of declared) {
+      if (ref.kind === 'entry' && !model.entries.has(ref.id)) {
+        return `${JSON.stringify(name)} in importer ${JSON.stringify(dir)} names ${JSON.stringify(ref.id)}, which is not an entry`;
+      }
+    }
+  }
+  for (const [id, entry] of model.entries) {
+    for (const [name, ref] of entry.dependencies) {
+      if (ref.kind === 'entry' && !model.entries.has(ref.id)) {
+        return `${JSON.stringify(name)} in ${JSON.stringify(id)} names ${JSON.stringify(ref.id)}, which is not an entry`;
+      }
+    }
+  }
+  return null;
 }
 
 /** `@scope/x@…` → `@scope/x`; `x@…` → `x`. Works for pnpm ids, Berry resolutions and classic ids. */
