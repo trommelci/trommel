@@ -130,6 +130,9 @@ export function decodeContainer(bytes: Uint8Array): Container {
   }
   const engine = input.str();
   const count = input.u16();
+  if (count * 16 > input.remaining) {
+    fail(`it lists ${count} sections, more than the file can hold`);
+  }
   const entries = Array.from({ length: count }, () => {
     const tag = String.fromCharCode(...input.bytes(4));
     const layer = input.u8();
