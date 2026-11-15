@@ -15,3 +15,5 @@ export { detectLockfile, diffLockfiles, LOCKFILE_PATHS, NpmLockfile, parseNpmLoc
 export { buildStaticMap, ENGINE, fileHash, globHash, hubHash, isHub, isLexed, isModule, listingHash, MAP_VERSION, readLockfile, sha256, type DeclaredRule, type LockfileState, type MapLockfile, type TrommelMap, type StaticInput } from './graph/static.ts';
 export { MapError, mapGraph, mapIndex, parseMap } from './graph/map.ts';
 export { CONFIG_PATH, runAll, selectStatic, type Escalation, type HeadState, type PlanRules, type Selection } from './select/plan.ts';
+export { SmapEncodeError } from './smap/bytes.ts';
+export { decodeSmap, encodeSmap, type Smap } from './smap/smap.ts';
