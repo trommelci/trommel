@@ -726,3 +726,64 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - A plan where a file was added recomputes all 10,040 hubs, which costs 0.19 s more than one where a file was only edited.
   - **The golden map's bytes match on two systems before CI:** `d648c838…806811` on Windows 11 (x64, Node 26.4), and on Ubuntu under WSL (x64, Node 22.22), run there from a type-stripped copy as in entry 28.
   - 500 tests in 31 files pass. Lint, typecheck and the zero-dependency check are clean.
+
+## 33. SMAP v0: the container, the snapshot layer and the static layer (2026-11-15)
+
+- **Context.** [ADR-0009](docs/adr/0009-smap-binary-map-format.md), as corrected on 2026-11-13 (entry 27), makes the map a binary container with a snapshot layer, a static layer and, from M3, a record layer. The code still wrote the canonical JSON of entry 23.
+  - This is item 4 of [HANDOFF.md](HANDOFF.md) §1.1, the last of the four M1 items that change what a map contains. M1's exit criteria name it: "byte-identical SMAP across OSes".
+  - The ADR fixes the model and leaves the bytes to the builder. The design, with the approaches that were weighed, is [docs/superpowers/specs/2026-11-14-smap-v0-design.md](docs/superpowers/specs/2026-11-14-smap-v0-design.md); Ojas approved it on 2026-11-14.
+  - It lands in two pull requests. **This entry is the first: the codec. Nothing calls it yet.** `trommel graph` still writes the JSON map and `trommel plan` still reads it. The cut-over is the next pull request.
+- **Decision.**
+  - **SMAP v0 is a serialization of `TrommelMap`, and nothing more.** `encodeSmap(map)` gives the bytes. `decodeSmap(bytes)` gives back the same map, a `Graph` built straight from the adjacency section, and the content address of each layer. The builder, the node model and the planner's rules are untouched, so the JSON map is the oracle for every test.
+    - The other way considered was a new in-memory model read lazily from the bytes, with the planner rewritten against it. A plan takes 0.18 s at 10,000 files against a 1 s target, and M3 reshapes the planner around records anyway.
+  - **The bytes are specified in [docs/smap-format.md](docs/smap-format.md),** with a test vector walked through byte by byte. In short: a header (magic, format, hash algorithm, engine id), a table of 16-byte entries, the section bodies and a SHA-256 trailer. `SNAP` is the snapshot layer. `META`, `KEYS`, `EDGE`, `HASH`, `GLOB`, `TEST` and `UNCT` are the static layer.
+  - **One map has one encoding, and the decoder accepts no other.** Varints are in their shortest form, keys and paths strictly ascending, shared prefixes the longest possible, edge targets ascending and gap-coded, sections in a fixed order with no gap. So a file that decodes re-encodes to the same bytes, and a content address means "the same map". The one exception is an optional section the decoder does not know, which it skips.
+  - **A hash is stored only where a plan cannot derive it.**
+    - Not stored: `f:` (the blob id and mode are in the snapshot), `d:` (the listing is in the snapshot) and `u:` (the SHA-256 of its causes, which are stored).
+    - Stored: every other kind, which today means `g:`, `p:`, `r:` and `c:`. **ADR-0009 listed "packages, globs and uncertain causes"; it is corrected in place to name the hubs.** A hub's hash depends on what its configs held at the base, and a plan in a depth-1 checkout cannot read those blobs.
+    - A stored hash is absent, a SHA-256 as 32 raw bytes, or any other text. The third form is for package hashes: npm integrity strings, `link:` targets, or a version and a URL (entry 18).
+  - **The encoder refuses a map whose derived hashes do not follow from its snapshot.** "The static graph is a function of the tree" (ADR-0003) is now a check at the point where a map is written, and it is what makes the round trip exact.
+  - **Text is UTF-8, with an unpaired surrogate written as the three bytes of its code point.** ADR-0009 said "UTF-8"; it is corrected in place.
+    - The lexer decodes escapes (entry 14), so `import './\uD800x'` gives the hub key `r:src/\uD800x`. The JSON map holds it as an escape. Plain UTF-8 would turn it into U+FFFD, and two different keys could become one.
+    - A surrogate pair is always the four-byte form, so the encoding stays unique. Git paths cannot hold an unpaired surrogate; keys, glob patterns and uncertain causes can.
+    - A leading U+FEFF is kept. `TextDecoder` drops it unless told otherwise, and a test pins that.
+  - **Each layer has a content address:** the SHA-256 of the format, the hash algorithm, the layer number and the layer's sections with their table fields. The static layer's also covers the engine id. The snapshot layer's does not, so one tree has one snapshot layer under every engine. Addresses are derived from the file, never stored in it. Nothing uses them before M3.
+  - **The engine id stays `trommel-static-3`,** which is entry 26's question answered. The builder gives the same graph: the pinned SHA-256 of the fixture's canonical JSON, `d648c838…806811`, did not move. The reading of a graph did not change either. The container has its own format number, and after the cut-over no plan crosses the change: an older planner cannot read a SMAP file, and the new one will not read a JSON map.
+  - **The format number is 0.** The record layer will be new sections, not a new format. [smap-format.md](docs/smap-format.md) §7 says which number moves for which change.
+  - **Smaller calls,** none of them in the ADR:
+    - Each table entry has a `layer` byte, so a layer's address can be computed without knowing any tag.
+    - `META` repeats the root tree, so a static layer names the snapshot it was derived from, and a mismatched pair is refused.
+    - `config` is stored although the tree holds the file. `buildStaticMap` takes it as an input, and the round trip gives back what went in.
+    - A mode is the varint of its octal number, which holds any mode a tree object can, where a five-value code would need an escape.
+    - Provenance is one run of bytes at the end of `EDGE`. It is long runs of one value, and the decoder copies it into the graph in one step.
+    - The magic follows PNG's (`\x89SMAP\r\n\x1a`), so a tool that treats the file as text damages it at once.
+    - A map with an empty edge list (`{'f:x': {}}`) is refused. A decoded map never has one, so accepting it would break the round trip. The builder never makes one.
+    - Every failure of the decoder is a `MapError`, worded as the reason after "the map is invalid:". The encoder throws `SmapEncodeError`.
+  - **Around the codec.**
+    - `Graph.fromForward` builds a graph from its names and forward arrays and derives the reverse index by counting. `GraphBuilder.build` is left as it is, so it stays an independent oracle for it.
+    - `mapIndex` (the base snapshot of a map as a `TreeIndex`) and `objectTypeOf` (the object type a mode stands for) were private to the planner.
+    - `packages/core/src/smap/` joins the lint rule of entry 28 that keeps `process`, `node:os` and `environment.ts` out.
+    - `.gitattributes` marks `*.smap` binary.
+    - The test helpers `fake-tree.ts` and `fake-repo.ts` can make SHA-256 ids.
+  - **The golden files.** [smap-format.md](docs/smap-format.md) §6 has the values.
+    - Vector 1 is a map written by hand that uses every section. `smap.test.ts` assembles its 460 bytes from hex, field by field, so the encoder is checked against the specification and not against itself.
+    - Vector 2 is the golden repository of entry 28. Its file is committed as `packages/core/test/fixtures/smap/golden.smap` (3,779 bytes), and `smap/golden.test.ts` pins its length, its SHA-256 and both layer addresses, next to the engine id and the format number. It has a path above U+FFFF, sorted by UTF-16 code unit.
+    - Vector 3 is a small SHA-256 repository.
+    - **The JSON pin stays** in `graph/golden.test.ts`. It pins the builder; the new pins cover the encoding. When one file fails and the other does not, that says which side moved.
+- **Evidence.**
+  - **Tests.** 717 pass in 36 files, where there were 500 in 31. Lint, typecheck and the zero-dependency check are clean.
+    - `smap/bytes.test.ts` (60), `smap/container.test.ts` (45), `smap/smap.test.ts` (91), `smap/golden.test.ts` (7) and `smap/fuzz.test.ts` (10); plus `Graph.fromForward` against the builder on 1,000 random graphs, and `mapIndex`.
+    - **Round trip,** on 300 random maps that the builder makes from random repositories: the decoded map has the same canonical JSON, re-encoding gives the same bytes, and the decoded graph equals `mapGraph(map)` in all six CSR arrays.
+    - **The generator is checked too.** A test asserts that those 300 maps include both object formats, a key with an unpaired surrogate, every lockfile state, an absent package, a symlink, a gitlink, an uncertain file and a config. It failed at first: the surrogate line had been written with the character itself, which UTF-8 encoding had already turned into U+FFFD.
+    - **Refusals:** 47 ways a file is refused, 40 by changing one section of vector 1 and 7 by changing its section table; and 25 ways a map is refused by the encoder.
+  - **Fuzzing.** Each input is refused with a `MapError`, or decodes to a map that re-encodes to exactly those bytes. No other error escaped.
+    - Every prefix of vectors 1 and 2, with and without a recomputed trailer: 8,414 inputs, all refused.
+    - Every single-byte change to vector 1 with the trailer recomputed: 109,140 inputs.
+    - 3,000 random edits to vector 2; 6,000 inside one section with the table rebuilt, since an insert in the file never reaches a section reader; and 3,000 random section bodies.
+    - A count of 2³² − 1 is refused at each of the seven places a count is read, before anything is sized by it.
+  - **80 hand mutants, all caught.** 14 in the primitives, 16 in the container, 5 in the graph helpers, 39 in the codec, 3 in the allocation checks and 3 against the golden pins.
+    - One survived its first pass and gained tests: bytes left over at the end of `SNAP`. Every section now has that test.
+    - The fuzz tests alone, with every other test file left out, catch 30 of 40 dropped decoder checks. The other ten need several coordinated bytes (a SHA-256 in the string form, a surrogate pair as two surrogates) or are masked by a later check, and each has a targeted test.
+  - **Found by the tests while they were being made to pass:** `ByteWriter` evaluated `this.buffer` before the call that could replace it, so a write that grew the buffer went to the old one.
+  - **Size.** The golden fixture is 3,779 bytes as SMAP and 10,559 as canonical JSON. The 10,000-file numbers come with the cut-over, when the benchmark writes SMAP.
+  - **The same bytes on two systems before CI:** all three vectors give identical lengths, hashes and layer addresses on Windows 11 (x64, Node 26.4) and on Ubuntu under WSL (x64, Node 22.22), run there from a type-stripped copy as in entry 28.

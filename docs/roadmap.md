@@ -2,7 +2,7 @@
 
 - **Status:** approved 2026-11-11.
 - **Plan:** selection-first, 10 milestones in order. A milestone has a scope and exit criteria, and no dates or commit budget: it is done when its exit criteria are met (DECISIONS 31).
-- **Progress:** M1 is under way, and its first ten steps (§4) are done. Resolution hubs are built (DECISIONS 32). Left in M1: pnpm and yarn lockfiles, SMAP v0, `trommel explain`, golden graphs for 6 repositories, and the incremental T6 timing. [HANDOFF.md](../HANDOFF.md) §8 has the detail. M2–M10 have not started.
+- **Progress:** M1 is under way, and its first ten steps (§4) are done. Resolution hubs are built (DECISIONS 32), and so is the SMAP v0 codec (DECISIONS 33). Left in M1: pnpm and yarn lockfiles, the cut-over of the CLI to SMAP, `trommel explain`, golden graphs for 6 repositories, and the incremental T6 timing. [HANDOFF.md](../HANDOFF.md) §8 has the detail. M2–M10 have not started.
 - **Related:** [architecture.md](architecture.md), [../bench/TARGETS.md](../bench/TARGETS.md), [adr/](adr/README.md).
 
 ## 1. Milestones
@@ -62,7 +62,7 @@ The [foundation review](research/2026-11-foundation-review.md) led to seven ADRs
 
 | Milestone | From | Added work |
 |---|---|---|
-| M1, after the walking skeleton | ADR-0003, ADR-0005, ADR-0009 | L1 seeds every node of the owning package, and a changed node that no test reaches escalates (done, DECISIONS 29). Environment nodes leave the map, and a fixture map's hash is asserted on every CI OS (done, DECISIONS 28). Resolution hubs (`r:`, `c:`) hold the shared probes (done, DECISIONS 32). Still to do: SMAP v0, the container, the snapshot layer and the static layer |
+| M1, after the walking skeleton | ADR-0003, ADR-0005, ADR-0009 | L1 seeds every node of the owning package, and a changed node that no test reaches escalates (done, DECISIONS 29). Environment nodes leave the map, and a fixture map's hash is asserted on every CI OS (done, DECISIONS 28). Resolution hubs (`r:`, `c:`) hold the shared probes (done, DECISIONS 32). SMAP v0, the container, the snapshot layer and the static layer: the codec is built (DECISIONS 33), and the cut-over of the CLI to it is still to do |
 | M2 | ADR-0005 | The record schema: closure as (node, hash) pairs, digest, environment, engine and recorder versions, completeness flags, time. Three capture scopes (test file, worker, run). The runner's reported effective configuration. Resolution evidence for non-literal imports |
 | M3 | ADR-0004, ADR-0005, ADR-0009, ADR-0012, ADR-0021 | `trommel run` runs every discovered test file the plan does not mention, and checks the shard's environment and tree against the plan. Several records per test, keyed by environment cell, in a record layer of SMAP. Base-free proofs and verifier. Lite mode: keys with format and cell, `cache-mode`, the origin check, and pull-request-scoped evidence |
 | M5 | ADR-0009, ADR-0012 | Lanes set from verified OIDC claims; only evidence-lane runs change shared state. Map chunking with chunk-local ids |
