@@ -20,13 +20,14 @@ export const USAGE = `Usage: trommel <command> [options]
 
 Commands:
   graph [--rev <rev>] [--out <file>]
-      Build the static impact graph of a revision (default HEAD) and print it, or write it to
-      <file>, as canonical JSON. Day-to-day: trommel graph --out .trommel/map/map.json
+      Build the static impact graph of a revision (default HEAD). With --out, write it to
+      <file> as a SMAP map; without, print it as canonical JSON.
+      Day-to-day: trommel graph --out .trommel/map/map.smap
   diff <base> <head>
       Print the snapshot difference between two revisions: files, directory listings and
       packages, as canonical JSON.
   plan --mode shadow --static [--map <dir>] [--head <rev>] [--shards <n>]
-      Select the tests a change can affect, from the map in <dir> (default .trommel/map) to
+      Select the tests a change can affect, from <dir>/map.smap (default .trommel/map) to
       <head> (default HEAD). --shadow is short for --mode shadow. With GITHUB_OUTPUT set it
       writes the outputs matrix and count; with GITHUB_STEP_SUMMARY, a summary. Without a
       usable map it plans every test and exits 0.

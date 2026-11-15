@@ -16,4 +16,5 @@ export { buildStaticMap, ENGINE, fileHash, globHash, hubHash, isHub, isLexed, is
 export { MapError, mapGraph, mapIndex, parseMap } from './graph/map.ts';
 export { CONFIG_PATH, runAll, selectStatic, type Escalation, type HeadState, type PlanRules, type Selection } from './select/plan.ts';
 export { SmapEncodeError } from './smap/bytes.ts';
+export { decodeContainer, encodeContainer, FORMAT, layerAddress, SNAPSHOT_LAYER, STATIC_LAYER, type Container, type Section } from './smap/container.ts';
 export { decodeSmap, encodeSmap, type Smap } from './smap/smap.ts';
