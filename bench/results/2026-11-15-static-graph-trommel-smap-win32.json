@@ -1,0 +1,38 @@
+{
+  "benchmark": "static-graph",
+  "cliColdMs": 358,
+  "edges": 1155,
+  "environment": {
+    "cpu": "AMD Ryzen AI 7 350 w/ Radeon 860M",
+    "git": "git version 2.55.0.windows.2",
+    "node": "v26.4.0",
+    "os": "win32 10.0.26200"
+  },
+  "files": 258,
+  "jsonBytes": 149855,
+  "lexedFiles": 142,
+  "mapBytes": 48609,
+  "nodes": 531,
+  "nodesByKind": {
+    "c": 51,
+    "d": 7,
+    "f": 165,
+    "g": 9,
+    "p": 193,
+    "r": 88,
+    "u": 18
+  },
+  "plan": null,
+  "repo": "trommelci/trommel @ c79d5a0",
+  "sourceMB": 0.6,
+  "stagesMs": {
+    "buildStaticMap": 65,
+    "encode": 5,
+    "gitVfsLoad": 24,
+    "lsTree": 45,
+    "readBlobs": 28,
+    "serializeJson": 1
+  },
+  "tests": 36,
+  "uncertainFiles": 18
+}

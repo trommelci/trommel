@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { canonicalJson, decodeContainer, decodeSmap, encodeContainer } from '@trommel/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const MAIN = join(import.meta.dirname, '..', 'src', 'main.ts');
@@ -12,7 +13,7 @@ const LOCK = JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'demo'
 let repo: string;
 const git = (...args: string[]): string =>
   execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'core.autocrlf=false', ...args], { cwd: repo, encoding: 'utf8' }).trim();
-const write = (files: Record<string, string>): void => {
+const write = (files: Record<string, string | Uint8Array>): void => {
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(dirname(join(repo, path)), { recursive: true });
     writeFileSync(join(repo, path), content);
@@ -57,11 +58,15 @@ afterAll(() => {
 });
 
 describe('trommel graph, then plan', () => {
-  it('writes the map of HEAD', () => {
-    const run = trommel(['graph', '--out', '.trommel/map/map.json']);
+  it('writes the map of HEAD as a SMAP file', () => {
+    const run = trommel(['graph', '--out', '.trommel/map/map.smap']);
     expect(run.stderr).toMatch(/2 tests/);
     expect(run.status).toBe(0);
-    const map = JSON.parse(readFileSync(join(repo, '.trommel/map/map.json'), 'utf8')) as { tests: string[]; rootTree: string };
+    expect(run.stdout).toBe('');
+    const bytes = readFileSync(join(repo, '.trommel/map/map.smap'));
+    expect([...bytes.subarray(0, 8)]).toEqual([0x89, 0x53, 0x4d, 0x41, 0x50, 0x0d, 0x0a, 0x1a]);
+    expect(run.stderr).toContain(`${bytes.length} bytes of SMAP`);
+    const { map } = decodeSmap(bytes);
     expect(map.tests).toEqual(['test/a.test.ts', 'test/c.test.ts']);
     expect(map.rootTree).toBe(git('rev-parse', 'HEAD^{tree}'));
   });
@@ -100,7 +105,7 @@ describe('trommel graph, then plan', () => {
   it('takes absolute paths for --out and --map', () => {
     const dir = mkdtempSync(join(tmpdir(), 'trommel-cli-abs-'));
     try {
-      expect(trommel(['graph', '--rev', base, '--out', join(dir, 'map.json')]).status).toBe(0);
+      expect(trommel(['graph', '--rev', base, '--out', join(dir, 'map.smap')]).status).toBe(0);
       const run = trommel(['plan', '--shadow', '--static', '--map', dir]);
       expect(run.status).toBe(0);
       expect((JSON.parse(run.stdout) as { fallback?: string }).fallback).toBeUndefined();
@@ -110,21 +115,35 @@ describe('trommel graph, then plan', () => {
   });
 
   it('builds byte-identical maps of the same revision', () => {
+    const again = join(repo, '.trommel/again.smap');
+    expect(trommel(['graph', '--rev', base, '--out', again]).status).toBe(0);
+    expect(Buffer.compare(readFileSync(again), readFileSync(join(repo, '.trommel/map/map.smap')))).toBe(0);
+  });
+
+  it('without --out, prints the same map as canonical JSON', () => {
     const run = trommel(['graph', '--rev', base]);
     expect(run.status).toBe(0);
-    expect(run.stdout).toBe(readFileSync(join(repo, '.trommel/map/map.json'), 'utf8'));
+    expect(run.stdout).toBe(`${canonicalJson(decodeSmap(readFileSync(join(repo, '.trommel/map/map.smap'))).map)}\n`);
+    expect(run.stderr).not.toContain('SMAP');
   });
 });
 
 describe('trommel plan fallbacks', () => {
-  it.each([
-    ['there is no map', [], 'no map at nowhere/map.json'],
-    ['the map is not JSON', [['bad/map.json', '{']], 'the map at bad/map.json is invalid: the map is not JSON'],
-  ])('plans every test, exiting 0, when %s', (_name, files, cause) => {
-    for (const [path, content] of files as [string, string][]) {
-      write({ [path]: content });
-    }
-    const dir = (files as [string, string][]).length > 0 ? 'bad' : 'nowhere';
+  /** The map the first test wrote, as bytes. */
+  const real = (): Buffer => readFileSync(join(repo, '.trommel/map/map.smap'));
+  const otherEngine = (): Uint8Array => encodeContainer({ ...decodeContainer(real()), engine: 'trommel-static-9' });
+
+  it.each<[string, string, () => Record<string, string | Uint8Array>, string]>([
+    ['there is no map', 'nowhere', () => ({}), 'no map at nowhere/map.smap'],
+    ['the map is not a SMAP file', 'bad', () => ({ 'bad/map.smap': '{' }), 'the map at bad/map.smap is invalid: it is not a SMAP file'],
+    ['the map is a JSON map under the new name', 'json', () => ({ 'json/map.smap': '{"version":1,"engine":"trommel-static-3"}' }), 'the map at json/map.smap is invalid: it is not a SMAP file'],
+    ['the map is empty', 'empty', () => ({ 'empty/map.smap': '' }), 'the map at empty/map.smap is invalid: it is not a SMAP file'],
+    ['the map is cut short', 'cut', () => ({ 'cut/map.smap': real().subarray(0, 200) }), 'the map at cut/map.smap is invalid: its trailer is not the SHA-256 of its contents'],
+    ['the map is cut inside its header', 'stub', () => ({ 'stub/map.smap': real().subarray(0, 40) }), 'the map at stub/map.smap is invalid: it ends before its trailer'],
+    ['the directory holds only a stale map.json', 'stale', () => ({ 'stale/map.json': '{"version":1}' }), 'no map at stale/map.smap'],
+    ['the map was built by another engine', 'other', () => ({ 'other/map.smap': otherEngine() }), 'the map at other/map.smap is invalid: the map was built by engine "trommel-static-9", expected trommel-static-3'],
+  ])('plans every test, exiting 0, when %s', (_name, dir, files, cause) => {
+    write(files());
     const outputs = join(repo, '..', `${repo.split(/[\\/]/).at(-1)!}-fallback.txt`);
     const run = trommel(['plan', '--shadow', '--static', '--map', dir], { GITHUB_OUTPUT: outputs });
     expect(run.status).toBe(0);
@@ -132,6 +151,16 @@ describe('trommel plan fallbacks', () => {
     expect(plan['fallback']).toBe(cause);
     expect(plan['run']).toEqual(['test/a.test.ts', 'test/c.test.ts']);
     expect(readFileSync(outputs, 'utf8')).toContain('count=2\n');
+    expect(run.stderr).toContain(cause);
+  });
+
+  it('reads map.smap and ignores a stale map.json beside it', () => {
+    write({ 'both/map.json': 'not a map at all', 'both/map.smap': real() });
+    const run = trommel(['plan', '--shadow', '--static', '--map', 'both']);
+    expect(run.status).toBe(0);
+    const plan = JSON.parse(run.stdout) as { fallback?: string; base: { map: string } };
+    expect(plan.fallback).toBeUndefined();
+    expect(plan.base.map).toBe('both/map.smap');
   });
 
   it('plans every test when trommel.config.json is invalid', () => {

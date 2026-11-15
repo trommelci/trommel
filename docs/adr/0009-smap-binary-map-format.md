@@ -1,8 +1,8 @@
 # ADR-0009: Custom SMAP binary map format
 
-- Status: Accepted (2026-11-11); corrected in place on 2026-11-13 after the [foundation review](../research/2026-11-foundation-review.md), findings C3, M2 and M4
+- Status: Accepted (2026-11-11); corrected in place on 2026-11-13 after the [foundation review](../research/2026-11-foundation-review.md), findings C3, M2 and M4; and on 2026-11-15, when SMAP v0 was built ([DECISIONS.md](../../DECISIONS.md) entry 33): which hashes are stored, and how text is stored
 - Deciders: Ojas Sugur
-- Related: [architecture.md](../architecture.md) §4.2, [ADR-0002](0002-zero-dependency-cli.md), [ADR-0010](0010-hashing.md)
+- Related: [smap-format.md](../smap-format.md), which gives the bytes; [architecture.md](../architecture.md) §4.2, [ADR-0002](0002-zero-dependency-cli.md), [ADR-0010](0010-hashing.md)
 
 ## Context
 Maps must be decoded both by the zero-dependency CLI (Lite mode, `trommel verify`) and by the server. They must stay compact for graphs of 100k nodes and deduplicate across snapshots.
@@ -24,10 +24,12 @@ A map that fails any check is invalid, and the plan runs everything.
 
 **Encoding.**
 - A node's identity is its key string: `f:`, `d:`, `g:`, `p:`, `r:`, `c:`, `u:` or `sm:`. Kinds for skeleton and body are reserved. A numeric id is a position in one file's key table and never appears outside that file.
-- Keys are sorted by UTF-16 code units, the order canonical JSON uses. They are stored as UTF-8, front-coded, with no Unicode normalization.
+- Keys are sorted by UTF-16 code units, the order canonical JSON uses. They are stored as UTF-8, front-coded, with no Unicode normalization. An unpaired surrogate, which UTF-8 cannot hold and which a string literal's escape can put in a key, is stored as the three bytes of its code point.
 - Adjacency is stored forward only, with delta-varint targets. The decoder derives the reverse index.
 - Provenance is a bitmask per edge, one byte: bit 0 static, bit 1 dynamic, bit 2 declared. The other bits are zero. Duplicate edges merge by OR.
-- A hash is stored only where a plan cannot derive the change from the snapshot diff: packages, globs and uncertain causes.
+- A hash is stored only where a plan cannot derive the change from the snapshot diff: packages, globs and resolution hubs. An uncertain node stores its causes, and its hash follows from them.
+
+**The bytes** of format 0 (the container, the snapshot layer and the static layer) are specified in [smap-format.md](../smap-format.md).
 
 **Chunking** per workspace package, with chunk-local ids and an import table, is defined when the server needs it (M5). Until then a map is one file.
 

@@ -15,9 +15,11 @@ export interface FakeSnapshot {
   readonly entries: LsTreeEntry[];
 }
 
-const sha1 = (text: string): string => createHash('sha1').update(text).digest('hex');
+export type FakeHash = 'sha1' | 'sha256';
 
-export function snapshot(files: Readonly<Record<string, FakeFile>>): FakeSnapshot {
+/** Object ids are a hash of the content with its type, 40 hex digits for sha1 and 64 for sha256. */
+export function snapshot(files: Readonly<Record<string, FakeFile>>, hash: FakeHash = 'sha1'): FakeSnapshot {
+  const id = (text: string): string => createHash(hash).update(text).digest('hex');
   const children = new Map<string, Map<string, LsTreeEntry>>([['', new Map()]]);
   const dirOf = (path: string): string => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
   const nameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
@@ -28,7 +30,7 @@ export function snapshot(files: Readonly<Record<string, FakeFile>>): FakeSnapsho
       children.set(d, new Map());
     }
     const type = file.mode === '160000' ? 'commit' : 'blob';
-    children.get(dir)!.set(nameOf(path), { mode: file.mode, type, oid: sha1(`${type}:${file.content}`), path });
+    children.get(dir)!.set(nameOf(path), { mode: file.mode, type, oid: id(`${type}:${file.content}`), path });
   }
 
   const entries: LsTreeEntry[] = [];
@@ -41,7 +43,7 @@ export function snapshot(files: Readonly<Record<string, FakeFile>>): FakeSnapsho
       }
     }
     const listing = [...own.values()].map((entry) => `${entry.mode} ${nameOf(entry.path)} ${entry.oid}`).sort().join('\n');
-    const oid = sha1(`tree:${listing}`);
+    const oid = id(`tree:${listing}`);
     entries.push(...own.values());
     return oid;
   };

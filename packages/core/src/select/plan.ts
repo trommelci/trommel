@@ -17,11 +17,10 @@
 // The environment is no part of this (ADR-0003, DECISIONS 28). A plan is a function of the map,
 // the head tree and the config; whether a record fits the machine that runs a test is checked in
 // that job, once records exist (ADR-0005).
-import { merkleDiff, TreeIndex, type FileChange } from '../git/diff.ts';
+import { merkleDiff, type FileChange, type TreeIndex } from '../git/diff.ts';
 import type { ObjectFormat } from '../git/git.ts';
-import type { ObjectType } from '../git/ls-tree.ts';
-import { forwardReach, reverseReach, whyPath } from '../graph/graph.ts';
-import { mapGraph } from '../graph/map.ts';
+import { forwardReach, reverseReach, whyPath, type Graph } from '../graph/graph.ts';
+import { mapGraph, mapIndex } from '../graph/map.ts';
 import { globHash, hubHash, isHub, isModule, readLockfile, type LockfileState, type MapLockfile, type TrommelMap } from '../graph/static.ts';
 import { LOCKFILE_PATHS } from '../lockfile/npm.ts';
 import { matchGlobs } from '../resolve/glob.ts';
@@ -74,18 +73,18 @@ export interface Selection {
   readonly ignored: readonly string[];
 }
 
-export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules): Selection {
+/**
+ * `prebuilt` is the graph of `map` when the caller already has it, as the SMAP decoder does; without
+ * it the graph is built from the map.
+ */
+export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules, prebuilt?: Graph): Selection {
   const tests = [...new Set(head.tests)].sort(compareStrings);
   const headLockfile = readLockfile(head.vfs);
   const fatal = untrusted(map, head, headLockfile);
   if (fatal !== null) {
     return runAll(tests, fatal);
   }
-  const base = TreeIndex.build({
-    rootOid: map.rootTree,
-    entries: map.snapshot.map(([mode, oid, path]) => ({ mode, oid, path, type: typeOf(mode) })),
-  });
-  const delta = merkleDiff(base, head.index);
+  const delta = merkleDiff(mapIndex(map), head.index);
   const lockfileChange = unparseableLockfileChange(map.lockfile, headLockfile, delta.files);
   if (lockfileChange !== null) {
     return runAll(tests, lockfileChange);
@@ -137,7 +136,7 @@ export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules)
     escalations.push({ level: 'L1', scope: resolver.packageOf(path), cause: `${path} was ${kind} and is not in the graph` });
   }
 
-  const graph = mapGraph(map);
+  const graph = prebuilt ?? mapGraph(map);
   // A changed node that no test of the map reaches is an unmapped input. The map's tests, not H's:
   // a deleted test reaches its own node. A u: node is never in `changed`; it is a seed regardless.
   const tested = forwardReach(graph, map.tests.map((test) => graph.id(`f:${test}`)!));
@@ -336,10 +335,6 @@ function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileS
 /** The name Node's lookup uses: the path after the last `node_modules/`. */
 function packageName(location: string): string {
   return location.slice(location.lastIndexOf('node_modules/') + 'node_modules/'.length);
-}
-
-function typeOf(mode: string): ObjectType {
-  return mode === '040000' ? 'tree' : mode === '160000' ? 'commit' : 'blob';
 }
 
 function compareStrings(a: string, b: string): number {

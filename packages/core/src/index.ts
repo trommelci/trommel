@@ -3,7 +3,7 @@ export { envHash, environment } from './environment.ts';
 export { merkleDiff, naiveDiff, TreeIndex, type DiffStats, type EntryState, type FileChange, type Snapshot, type TreeDelta } from './git/diff.ts';
 export { CatFileParser, type CatFileRecord } from './git/cat-file.ts';
 export { lsTree, readBlobs, readObjectFormat, repoRoot, type ObjectFormat } from './git/git.ts';
-export { LsTreeParser, parseLsTree, type LsTreeEntry, type ObjectType } from './git/ls-tree.ts';
+export { LsTreeParser, objectTypeOf, parseLsTree, type LsTreeEntry, type ObjectType } from './git/ls-tree.ts';
 export { GitVfs } from './git/vfs.ts';
 export { dialectOf, lexImports, lexImportsFromBytes, type Dialect, type DiagnosticCode, type ImportKind, type ImportRecord, type LexDiagnostic, type LexResult } from './lex/ts.ts';
 export { DECLARED, DYNAMIC, forwardReach, Graph, GraphBuilder, reverseReach, STATIC, whyPath, type Reach } from './graph/graph.ts';
@@ -13,5 +13,8 @@ export { dirname, exportsTargets, joinPath, MemoryVfs, Resolver, type EntryKind,
 export { parsePnpmWorkspace } from './resolve/yaml.ts';
 export { detectLockfile, diffLockfiles, LOCKFILE_PATHS, NpmLockfile, parseNpmLockfile, type DetectedLockfile, type LockedPackage, type Unparseable } from './lockfile/npm.ts';
 export { buildStaticMap, ENGINE, fileHash, globHash, hubHash, isHub, isLexed, isModule, listingHash, MAP_VERSION, readLockfile, sha256, type DeclaredRule, type LockfileState, type MapLockfile, type TrommelMap, type StaticInput } from './graph/static.ts';
-export { MapError, mapGraph, parseMap } from './graph/map.ts';
+export { MapError, mapGraph, mapIndex } from './graph/map.ts';
 export { CONFIG_PATH, runAll, selectStatic, type Escalation, type HeadState, type PlanRules, type Selection } from './select/plan.ts';
+export { SmapEncodeError } from './smap/bytes.ts';
+export { decodeContainer, encodeContainer, FORMAT, layerAddress, SNAPSHOT_LAYER, STATIC_LAYER, type Container, type Section } from './smap/container.ts';
+export { decodeSmap, encodeSmap, type Smap } from './smap/smap.ts';

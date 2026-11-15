@@ -5,6 +5,7 @@ All 21 ADRs below were accepted on 2026-11-11 in the planning session.
 - "Decided by Ojas" marks product calls made directly in that session.
 - **Corrected in place on 2026-11-13:** ADRs 0003, 0004, 0005, 0009, 0012, 0014 and 0021, after the [foundation review](../research/2026-11-foundation-review.md). Each one's status line names the findings behind its change. [DECISIONS.md](../../DECISIONS.md) entry 27 summarizes what changed and what the code still has to catch up on.
 - **Corrected in place on 2026-11-14:** ADRs 0001, 0019 and 0020 lost their schedule and commit figures when the roadmap dropped its dates and commit budgets. No decision changed ([DECISIONS.md](../../DECISIONS.md) entry 31).
+- **Corrected in place on 2026-11-15:** ADR 0009, when SMAP v0 was built. Resolution hubs store a hash, an uncertain node stores its causes, and an unpaired surrogate in a key is stored as three bytes. The decision did not change; two sentences now match the code ([DECISIONS.md](../../DECISIONS.md) entry 33).
 
 | # | Decision |
 |---|---|

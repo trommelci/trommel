@@ -5,7 +5,9 @@ import { buildStaticMap, fileHash, isLexed, readLockfile, type TrommelMap, type 
 import { dialectOf, lexImportsFromBytes } from '../../src/lex/ts.ts';
 import { matchGlobs } from '../../src/resolve/glob.ts';
 import { Resolver } from '../../src/resolve/resolver.ts';
+import { mapGraph } from '../../src/graph/map.ts';
 import { selectStatic, type HeadState, type PlanRules, type Selection } from '../../src/select/plan.ts';
+import { decodeSmap, encodeSmap } from '../../src/smap/smap.ts';
 import { fakeRepo, type FakeRepo } from '../graph/fake-repo.ts';
 
 type Files = Record<string, string>;
@@ -51,6 +53,18 @@ describe('selectStatic', () => {
     expect(selection.changed).toEqual(['f:src/b.ts']);
     expect(selection.affected).toEqual([{ test: 'test/a.test.ts', path: ['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b', 'f:src/b.ts'] }]);
     expect(selection.wouldSkip).toEqual(['test/c.test.ts', 'test/plain.test.ts']);
+  });
+
+  it('takes the graph it is handed, such as the one a SMAP file decodes to', () => {
+    const map = mapOf(fakeRepo(BASE));
+    const head = headOf(fakeRepo({ ...BASE, 'src/b.ts': 'export const b = 2;\n' }));
+    const decoded = decodeSmap(encodeSmap(map));
+    expect(selectStatic(decoded.map, head, {}, decoded.graph)).toEqual(selectStatic(map, head, {}));
+    // It is used, not rebuilt: a graph without the edge from src/a.ts to its import selects otherwise.
+    const { 'r:src/b': _dropped, ...rest } = map.edges['f:src/a.ts']!;
+    const cut = mapGraph({ ...map, edges: { ...map.edges, 'f:src/a.ts': rest } });
+    expect(selectStatic(map, head, {}, cut).affected).toEqual([]);
+    expect(selectStatic(map, head, {}).affected.map((a) => a.test)).toEqual(['test/a.test.ts']);
   });
 
   it('counts a mode change as a change', () => {

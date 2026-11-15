@@ -655,11 +655,12 @@ Every escalation appears in the plan summary with its cause. L0 is file-precise.
 ### 4.2 Blob store and map format
 - **Layout.** `t/{tenant}/r/{repo}/uploads/{id}` (raw, 14-day TTL) and `t/{tenant}/r/{repo}/cas/{sha256}`, holding map chunks, proof bundles and graph segments.
 - **Backends.** Local volume (default) or S3-compatible. **No cross-tenant dedup** (prevents confirmation-of-file probing).
-- **SMAP format** ([ADR-0009](adr/0009-smap-binary-map-format.md), as corrected on 2026-11-13). A custom little-endian binary container, encodable and decodable with zero dependencies via `DataView`.
+- **SMAP format** ([ADR-0009](adr/0009-smap-binary-map-format.md), as corrected on 2026-11-13 and 2026-11-15; the bytes are in [smap-format.md](smap-format.md)). A custom little-endian binary container, encodable and decodable with zero dependencies via `DataView`.
   - **Container:** a header (magic, format version, hash algorithm, static engine id), a section table with a version per section, and a SHA-256 trailer. A map that fails any check is invalid, and the plan runs everything.
   - **Three layers, each with its own content address:** the snapshot (the tree listing); the static graph, which is a function of the tree, the config and the engine alone and so has the same bytes on every OS; and, from M3, the records, per test and environment cell.
   - **Encoding:** a node's identity is its key string, and numeric ids never leave one file. Keys are sorted by UTF-16 code units and front-coded. Adjacency is stored forward only, and the decoder derives the reverse index. Provenance is one byte per edge: bit 0 static, bit 1 dynamic, bit 2 declared.
-  - **Until SMAP v0 is built** (later in M1), the map is the canonical JSON of [DECISIONS.md](../DECISIONS.md) entry 23, without its `e:` nodes (entry 28). It already has the same bytes on every OS, and a pinned fixture hash checks that in CI.
+  - **Stored hashes:** only where a plan cannot derive the change from the snapshot diff, which means packages, globs and resolution hubs. File and directory hashes follow from the snapshot, and the hash of an uncertain node from its stored causes.
+  - **Built** ([DECISIONS.md](../DECISIONS.md) entries 33 and 34): format 0, in `packages/core/src/smap/`, with golden files that CI asserts on every OS. `trommel graph --out` writes it to `.trommel/map/map.smap` and `trommel plan` reads it. Without `--out`, `trommel graph` prints the same map as the canonical JSON of entry 23, for a person to read.
 - **Chunking** per workspace package, with chunk-local ids and an import table, is defined when the server needs it (M5). Until then a map is one file.
 - **Hashing** ([ADR-0010](adr/0010-hashing.md)). Git's object hash for file contents. SHA-256 (node:crypto) for everything Trommel computes: digests, fingerprints, CAS keys.
 - **GC.** Per-repo mark-and-sweep.
