@@ -139,7 +139,7 @@ describe('decodeContainer', () => {
     ['a body that starts late', oneWith({ offset: '21 00 00 00' }), /starts at 33, expected 32/],
     ['a body past the end of the file', oneWith({ length: '03 00 00 00' }), /past the end/],
     ['bytes between the last body and the trailer', oneWith({ body: 'aa bb cc' }), /left over/],
-    ['a section count the file cannot hold', oneWith({ count: 'ff ff' }), /early/],
+    ['a section count the file cannot hold', oneWith({ count: 'ff ff' }), /lists 65535 sections, more than the file can hold/],
     ['a file cut inside the header', sealed(`${ONE.magic} 00 00 01`), /early/],
     ['two sections with one tag', two({ tag: 'SNAP', layer: '01' }, { tag: 'SNAP', layer: '01' }), /SNAP twice/],
     ['layers that descend', two({ tag: 'KEYS', layer: '02' }, { tag: 'SNAP', layer: '01' }), /layer/],

@@ -822,3 +822,15 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - Decoding checks the trailer and every section, and gives the CSR graph. The select step no longer rebuilds it, which was half of its time.
     - On this repository the map is 48,609 bytes against 149,855.
   - **Not yet seen in CI:** `trommel.yml` with the SMAP map. Its first run on this change should show the run-all fallback with "no map at .trommel/map/map.smap", and the first push to `main` after the merge should cache a `map.smap`. Check both, as §7 of the hand-off did for day 10.
+
+## 35. An external review of SMAP v0 (2026-11-15)
+
+- **Context.** After entries 33 and 34, Ojas had SMAP v0 reviewed by Gemini in Antigravity, read-only, on `main` at `74ca9b4`. It confirmed that the tests pass, that the golden hashes hold, and test vector 1 ([docs/smap-format.md](docs/smap-format.md) §6.1) byte by byte by hand. It reported four findings. All four are fixed here, and none changes a byte of the format or anything a user would notice.
+- **Decision.**
+  - **1. The section count was not checked before use.** `decodeContainer` read the count and built the table from it at once, while §5 of the specification says every count is checked against the bytes left before anything is sized by it. The reviewer rated this Important. It is graded Minor here: the count is a u16, so at most 65,535 entries are ever made, and a file too short for them already failed with "ends early". It is a matter of conformance, not of safety. The decoder now refuses a count whose 16-byte entries the bytes left cannot hold: "it lists 65535 sections, more than the file can hold".
+  - **2. The specification did not say that an edge list is never empty.** `encodeSmap` refuses a map that gives a node an empty edge list, because a decoded map never has one. §4.3 now says so: a node with no outgoing edge has degree 0 and no entry in the map's edge table.
+  - **3. The specification did not say why `format` is 0 and the map's `version` is 1.** §2 now says that `format` numbers the file format, and that `version` (`MAP_VERSION`) numbers the in-memory model and its canonical JSON and is not stored in the file. This is as intended (entry 34).
+  - **4. `npm run lint` scanned `.claude/` and `.superpowers/`.** ESLint does not read git's excludes, so in the main checkout it linted other sessions' worktrees under `.claude/worktrees/`, with over a thousand errors, and scratch files under `.superpowers/`. Both are now in `ignores` in `eslint.config.js`, in a commit of its own since it is outside SMAP.
+- **Evidence.**
+  - **Tests.** Still 712 in 36 files: the row "a section count the file cannot hold" in `container.test.ts` now expects the new message. It failed before the check was added, and again with the check removed by hand. Lint, typecheck and the zero-dependency check are clean.
+  - **The format did not move.** No golden hash in `test/smap/golden.test.ts` or `test/graph/golden.test.ts` changed, and vector 1 is still 460 bytes.
