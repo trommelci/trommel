@@ -111,6 +111,34 @@ export class Graph {
     this.revProvenance = revProvenance;
   }
 
+  /**
+   * A graph from its forward arrays alone, as the SMAP decoder reads them: `names` in sorted
+   * order, `fwdOffsets` with one entry more than there are nodes, and each node's targets
+   * ascending. The reverse index is derived by counting; sources are walked in ascending order, so
+   * each reverse bucket fills in the order `GraphBuilder.build` gives.
+   */
+  static fromForward(names: readonly string[], fwdOffsets: Uint32Array, fwdTargets: Uint32Array, fwdProvenance: Uint8Array): Graph {
+    const n = names.length;
+    const revOffsets = new Uint32Array(n + 1);
+    for (const target of fwdTargets) {
+      revOffsets[target + 1]!++;
+    }
+    for (let v = 0; v < n; v++) {
+      revOffsets[v + 1]! += revOffsets[v]!;
+    }
+    const revSources = new Uint32Array(fwdTargets.length);
+    const revProvenance = new Uint8Array(fwdTargets.length);
+    const fill = revOffsets.slice(0, n);
+    for (let from = 0; from < n; from++) {
+      for (let e = fwdOffsets[from]!; e < fwdOffsets[from + 1]!; e++) {
+        const slot = fill[fwdTargets[e]!]!++;
+        revSources[slot] = from;
+        revProvenance[slot] = fwdProvenance[e]!;
+      }
+    }
+    return new Graph(names, fwdOffsets, fwdTargets, fwdProvenance, revOffsets, revSources, revProvenance);
+  }
+
   name(id: number): string {
     const name = this.names[id];
     if (name === undefined) {

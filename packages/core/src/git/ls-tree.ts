@@ -14,6 +14,11 @@ export interface LsTreeEntry {
   readonly undecodable?: true;
 }
 
+/** The object type a tree entry's mode stands for: 040000 is a tree, 160000 a gitlink, the rest blobs. */
+export function objectTypeOf(mode: string): ObjectType {
+  return mode === '040000' ? 'tree' : mode === '160000' ? 'commit' : 'blob';
+}
+
 const NUL = 0x00;
 const SPACE = 0x20;
 const TAB = 0x09;

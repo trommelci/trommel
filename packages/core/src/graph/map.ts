@@ -1,6 +1,8 @@
 // Reading the M1 map back. A map is input from a cache that may be stale, truncated or written by
 // another version, so every field is checked; anything wrong is a MapError, which the CLI turns
 // into a run-all plan (L3, architecture §3.5) instead of a guess.
+import { TreeIndex } from '../git/diff.ts';
+import { objectTypeOf } from '../git/ls-tree.ts';
 import { GraphBuilder, type Graph } from './graph.ts';
 import { ENGINE, MAP_VERSION, type MapLockfile, type TrommelMap } from './static.ts';
 
@@ -121,6 +123,14 @@ export function mapGraph(map: TrommelMap): Graph {
     }
   }
   return builder.build();
+}
+
+/** The snapshot a map was built from, as an index: the base of a plan's diff. */
+export function mapIndex(map: Pick<TrommelMap, 'rootTree' | 'snapshot'>): TreeIndex {
+  return TreeIndex.build({
+    rootOid: map.rootTree,
+    entries: map.snapshot.map(([mode, oid, path]) => ({ mode, oid, path, type: objectTypeOf(mode) })),
+  });
 }
 
 function lockfile(value: unknown): MapLockfile {

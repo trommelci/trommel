@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { canonicalJson } from '../../src/canonical-json.ts';
 import { STATIC } from '../../src/graph/graph.ts';
-import { mapGraph, parseMap } from '../../src/graph/map.ts';
+import { mapGraph, mapIndex, parseMap } from '../../src/graph/map.ts';
 import { buildStaticMap, type TrommelMap } from '../../src/graph/static.ts';
 import { fakeRepo } from './fake-repo.ts';
 
@@ -52,5 +52,19 @@ describe('mapGraph', () => {
   it('is identical however the map was ordered', () => {
     const shuffled: TrommelMap = { ...map, nodes: Object.fromEntries(Object.entries(map.nodes).reverse()), edges: Object.fromEntries(Object.entries(map.edges).reverse()) };
     expect(mapGraph(shuffled).forwardTargets()).toEqual(mapGraph(map).forwardTargets());
+  });
+});
+
+describe('mapIndex', () => {
+  it('lists what the snapshot lists, under the root tree of the map', () => {
+    const index = mapIndex(map);
+    expect(index.rootOid).toBe(map.rootTree);
+    expect(index.rootOid).toBe(repo.index.rootOid);
+    expect(index.entries()).toEqual(repo.index.entries());
+  });
+
+  it('gives each entry the object type its mode stands for', () => {
+    const index = mapIndex({ rootTree: 'aa'.repeat(20), snapshot: [['040000', '11'.repeat(20), 'd'], ['100644', '22'.repeat(20), 'd/f'], ['120000', '33'.repeat(20), 'l'], ['160000', '44'.repeat(20), 'm']] });
+    expect(index.entries().map((entry) => [entry.path, entry.type])).toEqual([['d', 'tree'], ['d/f', 'blob'], ['l', 'blob'], ['m', 'commit']]);
   });
 });

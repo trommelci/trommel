@@ -17,11 +17,10 @@
 // The environment is no part of this (ADR-0003, DECISIONS 28). A plan is a function of the map,
 // the head tree and the config; whether a record fits the machine that runs a test is checked in
 // that job, once records exist (ADR-0005).
-import { merkleDiff, TreeIndex, type FileChange } from '../git/diff.ts';
+import { merkleDiff, type FileChange, type TreeIndex } from '../git/diff.ts';
 import type { ObjectFormat } from '../git/git.ts';
-import type { ObjectType } from '../git/ls-tree.ts';
 import { forwardReach, reverseReach, whyPath } from '../graph/graph.ts';
-import { mapGraph } from '../graph/map.ts';
+import { mapGraph, mapIndex } from '../graph/map.ts';
 import { globHash, hubHash, isHub, isModule, readLockfile, type LockfileState, type MapLockfile, type TrommelMap } from '../graph/static.ts';
 import { LOCKFILE_PATHS } from '../lockfile/npm.ts';
 import { matchGlobs } from '../resolve/glob.ts';
@@ -81,11 +80,7 @@ export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules)
   if (fatal !== null) {
     return runAll(tests, fatal);
   }
-  const base = TreeIndex.build({
-    rootOid: map.rootTree,
-    entries: map.snapshot.map(([mode, oid, path]) => ({ mode, oid, path, type: typeOf(mode) })),
-  });
-  const delta = merkleDiff(base, head.index);
+  const delta = merkleDiff(mapIndex(map), head.index);
   const lockfileChange = unparseableLockfileChange(map.lockfile, headLockfile, delta.files);
   if (lockfileChange !== null) {
     return runAll(tests, lockfileChange);
@@ -336,10 +331,6 @@ function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileS
 /** The name Node's lookup uses: the path after the last `node_modules/`. */
 function packageName(location: string): string {
   return location.slice(location.lastIndexOf('node_modules/') + 'node_modules/'.length);
-}
-
-function typeOf(mode: string): ObjectType {
-  return mode === '040000' ? 'tree' : mode === '160000' ? 'commit' : 'blob';
 }
 
 function compareStrings(a: string, b: string): number {

@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { DECLARED, DYNAMIC, forwardReach, GraphBuilder, reverseReach, STATIC, whyPath, type Graph } from '../../src/graph/graph.ts';
+import { DECLARED, DYNAMIC, forwardReach, Graph, GraphBuilder, reverseReach, STATIC, whyPath } from '../../src/graph/graph.ts';
 
 const names = (graph: Graph, ids: Iterable<number>) => [...ids].map((id) => graph.name(id));
 
@@ -259,5 +259,35 @@ describe('graph properties', () => {
       }),
       { numRuns: 1000 },
     );
+  });
+});
+
+describe('Graph.fromForward', () => {
+  it('gives the graph the builder gives, from the names and the forward arrays alone', () => {
+    fc.assert(
+      fc.property(arbGraph, (g) => {
+        const built = build(g);
+        const names = Array.from({ length: built.nodeCount }, (_, id) => built.name(id));
+        const graph = Graph.fromForward(names, built.fwdOffsets, built.fwdTargets, built.fwdProvenance);
+        expect(Array.from({ length: graph.nodeCount }, (_, id) => graph.name(id))).toEqual(names);
+        expect(graph.edgeCount).toBe(built.edgeCount);
+        expect(graph.fwdOffsets).toEqual(built.fwdOffsets);
+        expect(graph.fwdTargets).toEqual(built.fwdTargets);
+        expect(graph.fwdProvenance).toEqual(built.fwdProvenance);
+        expect(graph.revOffsets).toEqual(built.revOffsets);
+        expect(graph.revSources).toEqual(built.revSources);
+        expect(graph.revProvenance).toEqual(built.revProvenance);
+        for (const name of names) {
+          expect(graph.id(name)).toBe(built.id(name));
+        }
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  it('a graph with no nodes has no edges', () => {
+    const graph = Graph.fromForward([], new Uint32Array(1), new Uint32Array(0), new Uint8Array(0));
+    expect([graph.nodeCount, graph.edgeCount]).toEqual([0, 0]);
+    expect(graph.revOffsets).toEqual(new Uint32Array(1));
   });
 });
