@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { detectLockfile, diffLockfiles, parseNpmLockfile, type NpmLockfile } from '../../src/lockfile/npm.ts';
+import { detectLockfile, diffLockfiles, npmLockfile, parseNpmLockfile, type NpmLockfile } from '../../src/lockfile/npm.ts';
 
 const V3 = JSON.stringify({
   name: 'root',
@@ -116,5 +116,38 @@ describe('the repository’s own lockfile', () => {
     expect(lock.locate('vitest', '')).toBe('node_modules/vitest');
     const unhashed = [...lock.packages.values()].filter((p) => p.link === undefined && !p.hash.startsWith('sha'));
     expect(unhashed).toEqual([]);
+  });
+});
+
+describe('npmLockfile', () => {
+  const lock = npmLockfile(parse(V3), 'package-lock.json');
+
+  it('exposes every location as a p:npm: node with its hash', () => {
+    expect(lock.kind).toBe('npm');
+    expect(lock.path).toBe('package-lock.json');
+    expect(lock.nodes.get('p:npm:node_modules/lodash')).toBe('sha512-AAA');
+    expect(lock.nodes.get('p:npm:node_modules/@acme/core')).toBe('link:packages/core');
+    expect(lock.nodes.get('p:npm:node_modules/gitdep')).toBe('0.1.0|git+ssh://git@github.com/x/y.git#abc');
+    expect(lock.hash('p:npm:node_modules/a/node_modules/b')).toBe('sha512-CCC');
+    expect(lock.hash('p:npm:node_modules/nothing')).toBeUndefined();
+    const installed = [...lock.nodes].filter(([, hash]) => hash !== null).map(([key]) => key);
+    expect(installed).toEqual([...parse(V3).packages.keys()].map((location) => `p:npm:${location}`));
+  });
+
+  it('its dependencies are the resolved locations and the ⊥ nodes of missing names', () => {
+    // a declares b (its own copy), shared (hoisted) and react (installed nowhere)
+    expect(lock.dependencies('p:npm:node_modules/a')).toEqual(['p:npm:node_modules/a/node_modules/b', 'p:npm:node_modules/react', 'p:npm:node_modules/shared']);
+    expect(lock.nodes.get('p:npm:node_modules/react')).toBeNull();
+    expect(lock.hash('p:npm:node_modules/react')).toBeNull();
+    expect(lock.dependencies('p:npm:node_modules/react')).toEqual([]);
+    expect(lock.dependencies('p:npm:node_modules/lodash')).toEqual([]);
+    expect(lock.dependencies('f:src/a.ts')).toEqual([]);
+  });
+
+  it('locate returns the p:npm: key Node would load', () => {
+    expect(lock.locate('b', 'packages/core')).toBe('p:npm:packages/core/node_modules/b');
+    expect(lock.locate('b', 'node_modules/a/lib')).toBe('p:npm:node_modules/a/node_modules/b');
+    expect(lock.locate('b', '')).toBe('p:npm:node_modules/b');
+    expect(lock.locate('react', '')).toBeNull();
   });
 });

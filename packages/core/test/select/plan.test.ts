@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { parseNpmLockfile, type NpmLockfile } from '../../src/lockfile/npm.ts';
 import { buildStaticMap, fileHash, isLexed, readLockfile, type TrommelMap, type StaticInput } from '../../src/graph/static.ts';
 import { dialectOf, lexImportsFromBytes } from '../../src/lex/ts.ts';
 import { matchGlobs } from '../../src/resolve/glob.ts';
@@ -128,6 +129,17 @@ describe('selectStatic', () => {
     const selection = plan(BASE, head);
     expect(selection.changed).toEqual(['p:npm:node_modules/lodash']);
     expect(selected(selection)).toEqual(['test/c.test.ts']);
+  });
+
+  it('does not count the ⊥ node of a name the head lockfile misses as a new install location', () => {
+    const lock = (extra: Record<string, unknown>) =>
+      LOCK('sha512-1', { 'node_modules/x': { version: '1', integrity: 'sha512-x', dependencies: { foo: '1' } }, 'node_modules/x/node_modules/foo': { version: '1', integrity: 'sha512-f' }, ...extra });
+    const base = { ...BASE, 'package-lock.json': lock({}), 'src/d.ts': "import 'x';\n", 'test/d.test.ts': "import '../src/d';\n" };
+    // w is new and declares foo, which nothing installs at the root: head has a ⊥ node p:npm:node_modules/foo, and x's own copy of foo is not shadowed by it
+    const head = { ...base, 'package-lock.json': lock({ 'node_modules/w': { version: '1', integrity: 'sha512-w', dependencies: { foo: '1' } } }) };
+    const selection = plan(base, head);
+    expect(selection.changed).toEqual([]);
+    expect(selected(selection)).toEqual([]);
   });
 
   it('selects bare importers when the workspace packages change', () => {
@@ -403,14 +415,16 @@ describe('static selection soundness (property)', () => {
   const loads = (repo: FakeRepo, test: string, global: readonly string[]): { items: string; uncertain: boolean } => {
     const resolver = new Resolver(repo.vfs);
     const lock = readLockfile(repo.vfs);
+    // The oracle reads the npm lockfile itself, not through the interface under test.
+    const npm = lock.kind === 'parsed' ? (parseNpmLockfile(repo.vfs.read(lock.lockfile.path)!) as NpmLockfile) : null;
     const items = new Set<string>();
     let uncertain = false;
     const file = (path: string) => items.add(`file ${path} ${String(fileHash(repo.index, path))}`);
     const pkg = (location: string): void => {
-      if (lock.kind === 'npm' && !items.has(`pkg ${location}`)) {
+      if (npm !== null && !items.has(`pkg ${location}`)) {
         items.add(`pkg ${location}`);
-        items.add(`pkg ${location} ${lock.lockfile.packages.get(location)!.hash}`);
-        lock.lockfile.dependencies(location).resolved.forEach(pkg);
+        items.add(`pkg ${location} ${npm.packages.get(location)!.hash}`);
+        npm.dependencies(location).resolved.forEach(pkg);
       }
     };
     const queue = [test];
@@ -430,7 +444,7 @@ describe('static selection soundness (property)', () => {
           queue.push(target);
         }
         if (resolution.packageName !== undefined) {
-          const location = lock.kind === 'npm' ? lock.lockfile.locate(resolution.packageName, path.slice(0, Math.max(0, path.lastIndexOf('/')))) : null;
+          const location = npm !== null ? npm.locate(resolution.packageName, path.slice(0, Math.max(0, path.lastIndexOf('/')))) : null;
           if (location !== null) {
             pkg(location);
           } else if (lock.kind === 'unparseable') {

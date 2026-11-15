@@ -20,7 +20,8 @@ import { canonicalJson } from '../canonical-json.ts';
 import type { TreeIndex } from '../git/diff.ts';
 import type { ObjectFormat } from '../git/git.ts';
 import { dialectOf, lexImportsFromBytes, type ImportRecord } from '../lex/ts.ts';
-import { detectLockfile, LOCKFILE_PATHS, parseNpmLockfile, type NpmLockfile } from '../lockfile/npm.ts';
+import type { Lockfile } from '../lockfile/lockfile.ts';
+import { detectLockfile, LOCKFILE_PATHS, npmLockfile, parseNpmLockfile } from '../lockfile/npm.ts';
 import { matchGlobs } from '../resolve/glob.ts';
 import { dirname, Resolver, type Hub, type Resolution, type Vfs } from '../resolve/resolver.ts';
 import { DECLARED, STATIC } from './graph.ts';
@@ -49,11 +50,11 @@ export function isLexed(path: string): boolean {
 }
 
 export type LockfileState =
-  | { readonly kind: 'npm'; readonly path: string; readonly lockfile: NpmLockfile }
+  | { readonly kind: 'parsed'; readonly lockfile: Lockfile }
   | { readonly kind: 'unparseable'; readonly paths: readonly string[]; readonly reason: string }
   | { readonly kind: 'none' };
 
-/** The root lockfile of a snapshot: parsed when it is npm's, else every lockfile present. */
+/** The root lockfile of a snapshot: parsed when it is npm's (behind the `Lockfile` interface), else every lockfile present. */
 export function readLockfile(vfs: Vfs): LockfileState {
   const present = LOCKFILE_PATHS.filter((path) => vfs.kind(path) === 'file' || vfs.kind(path) === 'symlink').sort(compareStrings);
   const detected = detectLockfile(new Set(present));
@@ -62,7 +63,7 @@ export function readLockfile(vfs: Vfs): LockfileState {
   }
   if (detected.kind === 'npm') {
     const parsed = parseNpmLockfile(vfs.read(detected.path) ?? '');
-    return parsed.kind === 'npm' ? { kind: 'npm', path: detected.path, lockfile: parsed } : { kind: 'unparseable', paths: present, reason: parsed.reason };
+    return parsed.kind === 'npm' ? { kind: 'parsed', lockfile: npmLockfile(parsed, detected.path) } : { kind: 'unparseable', paths: present, reason: parsed.reason };
   }
   return { kind: 'unparseable', paths: present, reason: detected.reason };
 }
@@ -260,16 +261,22 @@ export function buildStaticMap(input: StaticInput): TrommelMap {
   const b = new MapBuilder(index, resolver);
   const files = vfs.files();
 
-  // Packages first, so a missing dependency's ⊥ node can never shadow an installed one.
-  if (lockfile.kind === 'npm') {
-    for (const [location, pkg] of lockfile.lockfile.packages) {
-      const from = b.node(`p:npm:${location}`, pkg.hash);
-      const { resolved, missing } = lockfile.lockfile.dependencies(location);
-      for (const dependency of resolved) {
-        b.edge(from, `p:npm:${dependency}`, STATIC);
+  // Installed packages first, then the ⊥ nodes, so a missing dependency can never shadow an installed one.
+  if (lockfile.kind === 'parsed') {
+    const { nodes } = lockfile.lockfile;
+    for (const [key, hash] of nodes) {
+      if (hash !== null) {
+        b.node(key, hash);
       }
-      for (const name of missing) {
-        b.edge(from, b.node(`p:npm:node_modules/${name}`, null), STATIC);
+    }
+    for (const [key, hash] of nodes) {
+      if (hash === null) {
+        b.node(key, null);
+      }
+    }
+    for (const key of nodes.keys()) {
+      for (const dependency of lockfile.lockfile.dependencies(key)) {
+        b.edge(key, dependency, STATIC);
       }
     }
   }
@@ -349,7 +356,7 @@ export function buildStaticMap(input: StaticInput): TrommelMap {
     rootTree: index.rootOid,
     undecodable: index.undecodable,
     config: input.config ?? null,
-    lockfile: lockfile.kind === 'npm' ? { kind: 'npm', path: lockfile.path } : lockfile,
+    lockfile: lockfile.kind === 'parsed' ? { kind: 'npm', path: lockfile.lockfile.path } : lockfile,
     snapshot: index.entries().map((entry) => [entry.mode, entry.oid, entry.path] as const),
     nodes: Object.fromEntries(b.nodes),
     edges: Object.fromEntries([...b.edges].map(([from, out]) => [from, Object.fromEntries(out)])),
@@ -388,15 +395,15 @@ function addResolution(b: MapBuilder, from: string, path: string, record: Import
   }
   // A bare specifier may load from node_modules even when tsconfig paths also found a file.
   const onlyPackage = resolution.kind === 'external';
-  if (lockfile.kind === 'npm') {
-    const location = lockfile.lockfile.locate(name, dirname(path));
-    if (location !== null) {
-      b.edge(from, `p:npm:${location}`, STATIC);
+  if (lockfile.kind === 'parsed') {
+    const key = lockfile.lockfile.locate(name, dirname(path));
+    if (key !== null) {
+      b.edge(from, key, STATIC);
       return;
     }
     b.edge(from, b.node(`p:npm:node_modules/${name}`, null), STATIC);
     if (onlyPackage) {
-      b.uncertain(path, `${where}: ${name} is not in ${lockfile.path}`);
+      b.uncertain(path, `${where}: ${name} is not in ${lockfile.lockfile.path}`);
     }
   } else if (lockfile.kind === 'unparseable') {
     for (const lock of lockfile.paths) {

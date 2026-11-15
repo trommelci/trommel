@@ -3,6 +3,8 @@
 // and `link:<dir>` for workspace links (whose files are already `f:` nodes). Formats this module
 // cannot read are reported as unparseable, which escalates to L3 (§3.5) instead of guessing.
 
+import type { Lockfile } from './lockfile.ts';
+
 export interface LockedPackage {
   readonly location: string;
   readonly name: string;
@@ -95,6 +97,44 @@ export function parseNpmLockfile(text: string): NpmLockfile | Unparseable {
     ]);
   }
   return new NpmLockfile(packages, declared);
+}
+
+const NPM = 'p:npm:';
+
+/**
+ * An npm lockfile as the one `Lockfile` interface (spec 2026-11-15-pnpm-yarn-lockfiles §8.1). Its
+ * nodes are the install locations with their hashes and the ⊥ node of every name some package
+ * declares but nothing installs, exactly what the builder has always added.
+ */
+export function npmLockfile(parsed: NpmLockfile, path: string): Lockfile {
+  const nodes = new Map<string, string | null>();
+  const edges = new Map<string, readonly string[]>();
+  for (const [location, pkg] of parsed.packages) {
+    nodes.set(NPM + location, pkg.hash);
+  }
+  for (const location of parsed.packages.keys()) {
+    const { resolved, missing } = parsed.dependencies(location);
+    const out = new Set<string>(resolved.map((dependency) => NPM + dependency));
+    for (const name of missing) {
+      const key = `${NPM}node_modules/${name}`;
+      out.add(key);
+      if (!nodes.has(key)) {
+        nodes.set(key, null);
+      }
+    }
+    edges.set(NPM + location, Object.freeze([...out].sort(compareStrings)));
+  }
+  return {
+    kind: 'npm',
+    path,
+    nodes,
+    hash: (key) => nodes.get(key),
+    dependencies: (key) => edges.get(key) ?? [],
+    locate: (name, dir) => {
+      const location = parsed.locate(name, dir);
+      return location === null ? null : NPM + location;
+    },
+  };
 }
 
 /** Install locations that appeared, changed hash or disappeared between two lockfiles. */

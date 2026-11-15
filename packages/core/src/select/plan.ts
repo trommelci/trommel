@@ -289,13 +289,12 @@ function unparseableLockfileChange(before: MapLockfile, after: LockfileState, fi
 }
 
 function describe(lockfile: MapLockfile | LockfileState): string {
-  return lockfile.kind === 'npm' ? lockfile.path : lockfile.kind === 'unparseable' ? lockfile.paths.join(', ') : 'none';
+  return lockfile.kind === 'npm' ? lockfile.path : lockfile.kind === 'parsed' ? lockfile.lockfile.path : lockfile.kind === 'unparseable' ? lockfile.paths.join(', ') : 'none';
 }
 
 /** g: and p: nodes whose hash at H differs from the map's. */
 function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileState, resolver: Resolver): string[] {
   const changed: string[] = [];
-  const packages = lockfile.kind === 'npm' ? lockfile.lockfile.packages : new Map<string, { hash: string }>();
   let files: readonly string[] | null = null;
   for (const [key, hash] of Object.entries(map.nodes)) {
     let now: string | null | undefined;
@@ -306,7 +305,7 @@ function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileS
       files ??= head.vfs.files();
       now = patterns === undefined ? undefined : globHash(matchGlobs(files, patterns));
     } else if (key.startsWith('p:npm:')) {
-      now = packages.get(key.slice('p:npm:'.length))?.hash ?? null;
+      now = lockfile.kind === 'parsed' ? (lockfile.lockfile.hash(key) ?? null) : null;
     } else {
       continue;
     }
@@ -317,9 +316,12 @@ function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileS
   // A new install location can shadow another copy of the same package for some importers, so it
   // changes every copy of that name in the map.
   const added = new Set<string>();
-  for (const location of packages.keys()) {
-    if (!Object.hasOwn(map.nodes, `p:npm:${location}`)) {
-      added.add(packageName(location));
+  if (lockfile.kind === 'parsed') {
+    // Only installed locations count: the ⊥ node of a missing name is no install location.
+    for (const [key, hash] of lockfile.lockfile.nodes) {
+      if (hash !== null && key.startsWith('p:npm:') && !Object.hasOwn(map.nodes, key)) {
+        added.add(packageName(key));
+      }
     }
   }
   if (added.size > 0) {
