@@ -24,7 +24,7 @@ const HEADER = [
   '00 00', // format 0
   '01', // sha1
   '00', // reserved
-  `10 ${ascii('trommel-static-3')}`, // engine
+  `10 ${ascii('trommel-static-4')}`, // engine
   '08 00', // eight sections
 ].join(' ');
 
@@ -193,10 +193,57 @@ describe('round trips', () => {
   });
 
   it('every lockfile state, a config and an undecodable count round-trip', () => {
-    for (const lockfile of [{ kind: 'none' }, { kind: 'npm', path: 'package-lock.json' }, { kind: 'unparseable', paths: ['pnpm-lock.yaml', 'yarn.lock'], reason: 'two lockfiles' }] as const) {
+    for (const lockfile of [
+      { kind: 'none' },
+      { kind: 'npm', path: 'package-lock.json' },
+      { kind: 'pnpm', path: 'pnpm-lock.yaml' },
+      { kind: 'yarn-berry', path: 'yarn.lock' },
+      { kind: 'yarn-classic', path: 'yarn.lock' },
+      { kind: 'unparseable', paths: ['pnpm-lock.yaml', 'yarn.lock'], reason: 'two lockfiles' },
+    ] as const) {
       const map: TrommelMap = { ...ONE, lockfile, config: '5c'.repeat(20), undecodable: 300 };
       expect(decodeSmap(encodeSmap(map)).map).toEqual(map);
     }
+  });
+
+  // docs/smap-format.md §4.1: each parsed kind is its own byte, followed by the lockfile's path.
+  it.each([
+    ['npm', '01', 'package-lock.json'],
+    ['pnpm', '03', 'pnpm-lock.yaml'],
+    ['yarn-berry', '04', 'yarn.lock'],
+    ['yarn-classic', '05', 'yarn.lock'],
+  ] as const)('%s is lockfile kind %s, then its path', (kind, byte, path) => {
+    const bytes = vectorWith({ META: `${run('aa', 20)} 00 ${byte} ${path.length.toString(16).padStart(2, '0')} ${ascii(path)}` });
+    const map: TrommelMap = { ...ONE, lockfile: { kind, path } };
+    expect(hexOf(encodeSmap(map))).toBe(hexOf(bytes));
+    expect(decodeSmap(bytes).map).toEqual(map);
+  });
+
+  it('a pnpm map from the builder round-trips, with a name node', () => {
+    const repo = fakeRepo({
+      'pnpm-lock.yaml': [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  .:',
+        '    dependencies:',
+        '      foo:',
+        '        specifier: ^1.0.0',
+        '        version: 1.0.0',
+        '  packages/a: {}',
+        'packages:',
+        '  foo@1.0.0:',
+        '    resolution: {integrity: sha512-foo}',
+        'snapshots:',
+        '  foo@1.0.0: {}',
+        '',
+      ].join('\n'),
+      'packages/a/package.json': '{"name":"a"}\n',
+      'packages/a/a.test.ts': "import 'foo';\n",
+    });
+    const map = buildStaticMap({ objectFormat: 'sha1', index: repo.index, vfs: repo.vfs, sources: repo.sources, tests: ['packages/a/a.test.ts'] });
+    expect(map.lockfile).toEqual({ kind: 'pnpm', path: 'pnpm-lock.yaml' });
+    expect(map.edges['f:packages/a/a.test.ts']?.['p:pnpm:foo@*']).toBe(1);
+    expect(canonicalJson(decodeSmap(encodeSmap(map)).map)).toBe(canonicalJson(map));
   });
 
   it('strings with an unpaired surrogate round-trip in keys, patterns and causes', () => {
@@ -223,8 +270,8 @@ describe('round trips', () => {
 describe('decodeSmap', () => {
   it("refuses another engine's map, and says which", () => {
     expect(() => decodeSmap(VECTOR.bytes, 'trommel-static-9')).toThrow(MapError);
-    expect(() => decodeSmap(VECTOR.bytes, 'trommel-static-9')).toThrow(/built by engine "trommel-static-3", expected trommel-static-9/);
-    expect(ENGINE).toBe('trommel-static-3');
+    expect(() => decodeSmap(VECTOR.bytes, 'trommel-static-9')).toThrow(/built by engine "trommel-static-4", expected trommel-static-9/);
+    expect(ENGINE).toBe('trommel-static-4');
   });
 
   it('skips an optional section it does not know', () => {
@@ -253,7 +300,7 @@ describe('decodeSmap', () => {
     ['an entry count the section cannot hold', { SNAP: `${run('aa', 20)} 00 ff ff 03` }, /section SNAP.*count/],
     ["a graph of a tree that is not the snapshot's", { META: `${run('ab', 20)} 00 01 11 ${ascii('package-lock.json')}` }, /section META.*tree/],
     ['a config flag of 2', { META: `${run('aa', 20)} 02 00` }, /section META.*config/],
-    ['a lockfile kind of 3', { META: `${run('aa', 20)} 00 03` }, /section META.*lockfile/],
+    ['a lockfile kind of 6', { META: `${run('aa', 20)} 00 06` }, /section META.*lockfile/],
     ['keys out of order', { KEYS: `02 00 06 ${ascii('f:a.ts')} 05 06 ${ascii('est.ts')}` }, /section KEYS.*order/],
     ['a key twice', { KEYS: `02 00 06 ${ascii('f:a.ts')} 06 00` }, /section KEYS.*order/],
     ['a key with no kind', { KEYS: `01 00 03 ${ascii('abc')}` }, /section KEYS.*kind/],
@@ -337,7 +384,8 @@ describe('encodeSmap refuses', () => {
     ['a key with no kind', withMap(lone('nokind', null)), /nokind/],
     ['another map version', withMap((d) => (d.version = 2)), /version 2/],
     ['an unknown object format', withMap((d) => ((d as Loose)['objectFormat'] = 'md5')), /md5/],
-    ['an unknown lockfile kind', withMap((d) => ((d as Loose)['lockfile'] = { kind: 'pnpm' })), /lockfile/],
+    ['an unknown lockfile kind', withMap((d) => ((d as Loose)['lockfile'] = { kind: 'bun', path: 'bun.lock' })), /lockfile/],
+    ['a known lockfile kind without a path', withMap((d) => ((d as Loose)['lockfile'] = { kind: 'pnpm' })), /lockfile/],
     ['a hash that is not a string', withMap((d) => ((d.nodes as Loose) = { ...d.nodes, 'g:glob:k': 7 })), /g:glob:k/],
   ])('%s', (_name, map, message) => {
     expect(() => encodeSmap(map)).toThrow(SmapEncodeError);

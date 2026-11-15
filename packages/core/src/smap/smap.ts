@@ -15,6 +15,7 @@ import type { TreeIndex } from '../git/diff.ts';
 import { Graph } from '../graph/graph.ts';
 import { MapError, mapIndex } from '../graph/map.ts';
 import { ENGINE, fileHash, listingHash, MAP_VERSION, sha256, type MapLockfile, type TrommelMap } from '../graph/static.ts';
+import type { LockfileKind } from '../lockfile/lockfile.ts';
 import { ByteReader, ByteWriter, compareStrings, FrontReader, FrontWriter, SmapEncodeError } from './bytes.ts';
 import { decodeContainer, encodeContainer, layerAddress, SNAPSHOT_LAYER, STATIC_LAYER, type Section } from './container.ts';
 
@@ -38,8 +39,15 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 const SHA256_BYTES = 32;
 const OID_BYTES = { sha1: 20, sha256: 32 } as const;
 const LOCKFILE_NONE = 0;
-const LOCKFILE_NPM = 1;
 const LOCKFILE_UNPARSEABLE = 2;
+/** `META`'s lockfile byte for each parsed kind, which its path follows (docs/smap-format.md §4.1). */
+const LOCKFILE_KINDS: ReadonlyMap<LockfileKind, number> = new Map([
+  ['npm', 1],
+  ['pnpm', 3],
+  ['yarn-berry', 4],
+  ['yarn-classic', 5],
+]);
+const KIND_OF_BYTE: ReadonlyMap<number, LockfileKind> = new Map([...LOCKFILE_KINDS].map(([kind, byte]) => [byte, kind]));
 const HASH_ABSENT = 0;
 const HASH_SHA256 = 1;
 const HASH_STRING = 2;
@@ -234,12 +242,14 @@ export function encodeSmap(map: TrommelMap): Uint8Array {
 }
 
 function writeLockfile(out: ByteWriter, lockfile: MapLockfile): void {
+  // The map may come from anywhere, so its kind is checked against the known ones and not trusted.
+  const parsed = LOCKFILE_KINDS.get(lockfile.kind as LockfileKind);
   if (lockfile.kind === 'none') {
     out.u8(LOCKFILE_NONE);
-  } else if (lockfile.kind === 'npm') {
-    out.u8(LOCKFILE_NPM);
-    out.str(lockfile.path);
-  } else if ((lockfile as { kind: string }).kind === 'unparseable') {
+  } else if (parsed !== undefined && typeof (lockfile as { path?: unknown }).path === 'string') {
+    out.u8(parsed);
+    out.str((lockfile as { path: string }).path);
+  } else if (lockfile.kind === 'unparseable') {
     out.u8(LOCKFILE_UNPARSEABLE);
     out.str(lockfile.reason);
     out.varint(lockfile.paths.length);
@@ -443,8 +453,9 @@ function readLockfile(input: ByteReader): MapLockfile {
   if (kind === LOCKFILE_NONE) {
     return { kind: 'none' };
   }
-  if (kind === LOCKFILE_NPM) {
-    return { kind: 'npm', path: input.str() };
+  const parsed = KIND_OF_BYTE.get(kind);
+  if (parsed !== undefined) {
+    return { kind: parsed, path: input.str() };
   }
   if (kind === LOCKFILE_UNPARSEABLE) {
     const reason = input.str();

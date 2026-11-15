@@ -16,8 +16,8 @@ import { ENGINE } from '../../src/graph/static.ts';
 import { goldenMap } from './golden-fixture.ts';
 
 const GOLDEN = {
-  engine: 'trommel-static-3',
-  sha256: 'd648c8388ae3cd20ecfcf487d1dbcda9457b447217f93ff976da497a7d806811',
+  engine: 'trommel-static-4',
+  sha256: 'e66292fe24cfeb58cc433ff95fa2bf5ab4133d99cc5b310dcc710dc3ba03739d',
 } as const;
 
 const map = goldenMap;

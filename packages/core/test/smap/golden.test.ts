@@ -35,24 +35,24 @@ const pins = (bytes: Uint8Array) => {
 
 // Vector 2: the golden repository of ../graph/golden-fixture.ts.
 const VECTOR_2 = {
-  engine: 'trommel-static-3',
+  engine: 'trommel-static-4',
   format: 0,
   length: 3779,
-  sha256: '1e681e67d1b2c5b750bb2ce5120976b22d75c6c2c8ed5c7c836d5fef91c4c335',
+  sha256: '6f34de93c59906e017ea97dcb86487cd1c65140f77ba77acb9b9998452cf96c1',
   snapshot: '363d585752cce5e318523488e4434ae399c9cbdee216a39349b6e78e89e8f9e8',
-  static: 'bee3301f7bee9696132676a7ca225b45bb0c1c189bc98a9367dff9dbcdb1a480',
+  static: '49bef58675646f283c38057c0395baa36639a90e2184d170f4d4721b6993ed37',
 } as const;
 /** The SHA-256 of the same map as canonical JSON, as ../graph/golden.test.ts pins it. */
-const VECTOR_2_JSON = 'd648c8388ae3cd20ecfcf487d1dbcda9457b447217f93ff976da497a7d806811';
+const VECTOR_2_JSON = 'e66292fe24cfeb58cc433ff95fa2bf5ab4133d99cc5b310dcc710dc3ba03739d';
 
 // Vector 3: a small SHA-256 repository, so 32-byte object ids are pinned too.
 const VECTOR_3 = {
-  engine: 'trommel-static-3',
+  engine: 'trommel-static-4',
   format: 0,
   length: 1045,
-  sha256: '526aa9ba8990a9b6baf77023e823b4f73de5170fece91e061cf908059be3f62b',
+  sha256: '59b135a40122ae07ee9975b39e3948145018c894a400c7484f9e2bc7ad6468fa',
   snapshot: '4e9391e83c4e4ba4d151a800b46f43cc6989320fa83444abbff0ac3ea1219c34',
-  static: '244884ad07583b2533954b78d27787efe9688d820b7e5c6916299e2674f61ec5',
+  static: '49a67692864ca575de0e83916c09480f44c94423e4f9e9b848d325714722f930',
 } as const;
 
 const FACE = '\u{1F600}';

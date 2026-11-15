@@ -141,7 +141,7 @@ describe('trommel plan fallbacks', () => {
     ['the map is cut short', 'cut', () => ({ 'cut/map.smap': real().subarray(0, 200) }), 'the map at cut/map.smap is invalid: its trailer is not the SHA-256 of its contents'],
     ['the map is cut inside its header', 'stub', () => ({ 'stub/map.smap': real().subarray(0, 40) }), 'the map at stub/map.smap is invalid: it ends before its trailer'],
     ['the directory holds only a stale map.json', 'stale', () => ({ 'stale/map.json': '{"version":1}' }), 'no map at stale/map.smap'],
-    ['the map was built by another engine', 'other', () => ({ 'other/map.smap': otherEngine() }), 'the map at other/map.smap is invalid: the map was built by engine "trommel-static-9", expected trommel-static-3'],
+    ['the map was built by another engine', 'other', () => ({ 'other/map.smap': otherEngine() }), 'the map at other/map.smap is invalid: the map was built by engine "trommel-static-9", expected trommel-static-4'],
   ])('plans every test, exiting 0, when %s', (_name, dir, files, cause) => {
     write(files());
     const outputs = join(repo, '..', `${repo.split(/[\\/]/).at(-1)!}-fallback.txt`);

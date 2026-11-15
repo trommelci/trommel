@@ -56,7 +56,7 @@ header
   format    u16       0
   hash      u8        1 = sha1, 2 = sha256
   reserved  u8        0
-  engine    str       the static engine id, such as "trommel-static-3"
+  engine    str       the static engine id, such as "trommel-static-4"
   count     u16       number of sections
 section table, 16 bytes per section
   tag       4 bytes   ASCII, each A-Z or 0-9
@@ -132,6 +132,9 @@ lockfile  u8 0               none
        or u8 1, str          npm: the lockfile's path
        or u8 2, str, varint n, n × str
                              unparseable: the reason, then every lockfile present
+       or u8 3, str          pnpm: the lockfile's path
+       or u8 4, str          yarn Berry: the lockfile's path
+       or u8 5, str          classic yarn: the lockfile's path
 ```
 
 ### 4.2 `KEYS`
@@ -171,7 +174,7 @@ u8 1, 32 bytes        a SHA-256
 u8 2, str             any other text
 ```
 
-A value that is 64 lowercase hex digits is always form 1. Form 2 is for package hashes, which are npm integrity strings, `link:` targets, or a version and a URL.
+A value that is 64 lowercase hex digits is always form 1. Form 2 is for package hashes, which are npm integrity strings, `link:` targets, or a version and a URL, and, for a pnpm or yarn lookup location, the id of the entry it resolves to. The hashes of pnpm and yarn entries, name nodes and pnpm's own document are SHA-256, form 1.
 
 ### 4.5 `GLOB`
 
@@ -223,7 +226,7 @@ Each failure makes the file invalid.
 - **Every count** is checked against the bytes left before anything is sized by it.
 - **Primitives:** varints and text in their only valid form; shared prefixes the longest possible.
 - **`SNAP`:** paths strictly ascending; modes below 1000000 octal.
-- **`META`:** the tree equal to `SNAP`'s root; a config flag of 0 or 1; a lockfile kind of 0 to 2.
+- **`META`:** the tree equal to `SNAP`'s root; a config flag of 0 or 1; a lockfile kind of 0 to 5.
 - **`KEYS`:** strictly ascending; each key with a kind.
 - **`EDGE`:** targets ascending and below the node count; the degrees adding up to the total; provenance 1 to 7.
 - **`HASH`:** a form of 0 to 2; no SHA-256 in form 2.
@@ -237,7 +240,7 @@ Each failure makes the file invalid.
 The map, as the canonical JSON model has it:
 
 ```
-objectFormat  sha1          engine   trommel-static-3
+objectFormat  sha1          engine   trommel-static-4
 rootTree      aa × 20       config   none        undecodable  0
 lockfile      npm, package-lock.json
 snapshot      100644  11 × 20  a.test.ts
@@ -254,7 +257,7 @@ tests         a.test.ts
 uncertain     u:a.ts: "line 1: lexer E"
 ```
 
-The file is 460 bytes. Its SHA-256 is `4822190935316bbf04ba1f64fda0643ad24b1dd5be31e7bb9e9beea063a32b81`.
+The file is 460 bytes. Its SHA-256 is `649fe9a2c389b077a7448c8df4e1649e28216a5849b3d7ba0a7a7772825647f8`.
 
 ```
 offset  bytes                                              meaning
@@ -264,7 +267,7 @@ header
      8  00 00                                              format 0
     10  01                                                 sha1
     11  00                                                 reserved
-    12  10 "trommel-static-3"                              engine: 16 bytes of text
+    12  10 "trommel-static-4"                              engine: 16 bytes of text
     29  08 00                                              8 sections
 
 section table            tag     layer flags version  offset       length
@@ -324,11 +327,11 @@ UNCT
    411  01  0f "line 1: lexer E"                           node 5: 1 cause, 15 bytes
 
 trailer
-   428  f4 22 b3 8d 68 ec 1c 1a b2 0b 17 83 38 f3 d8 3d
-        3a be 03 ad b6 fd 14 9b e4 36 dd 1f 89 cf 95 bb    SHA-256 of bytes 0 to 427
+   428  64 9d f8 77 d2 b5 c0 b5 e2 5d 47 cc 79 3b f2 9e
+        08 55 df c3 ba 19 90 f1 c5 a1 fc 77 9e dc a6 f3    SHA-256 of bytes 0 to 427
 ```
 
-Its layer addresses are `38f18a7d6a2595be651d1daf28fea5272f2bf23028500a371f5d8132b7c33672` (snapshot) and `5f4b2277f90bff0dc62a00c7d2d6a7e6b1034970ee8244ef3a3472f757778fec` (static).
+Its layer addresses are `38f18a7d6a2595be651d1daf28fea5272f2bf23028500a371f5d8132b7c33672` (snapshot) and `a652ef6f72ef0e5b4fb81c194a250688943332c1eb6455f96e90bcdf06168956` (static).
 
 `packages/core/test/smap/smap.test.ts` holds these bytes as hex, field by field, and compares the encoder's output with them.
 
@@ -339,10 +342,10 @@ The repository of `packages/core/test/graph/golden-fixture.ts`: 68 nodes of ever
 | | |
 |---|---|
 | Length | 3,779 bytes. The canonical JSON of the same map is 10,559 |
-| SHA-256 of the file | `1e681e67d1b2c5b750bb2ce5120976b22d75c6c2c8ed5c7c836d5fef91c4c335` |
+| SHA-256 of the file | `6f34de93c59906e017ea97dcb86487cd1c65140f77ba77acb9b9998452cf96c1` |
 | Snapshot layer | `363d585752cce5e318523488e4434ae399c9cbdee216a39349b6e78e89e8f9e8` |
-| Static layer | `bee3301f7bee9696132676a7ca225b45bb0c1c189bc98a9367dff9dbcdb1a480` |
-| SHA-256 of the map as canonical JSON | `d648c8388ae3cd20ecfcf487d1dbcda9457b447217f93ff976da497a7d806811` |
+| Static layer | `49bef58675646f283c38057c0395baa36639a90e2184d170f4d4721b6993ed37` |
+| SHA-256 of the map as canonical JSON | `e66292fe24cfeb58cc433ff95fa2bf5ab4133d99cc5b310dcc710dc3ba03739d` |
 
 Its sections are `SNAP` 1,276 bytes, `META` 60, `KEYS` 762, `EDGE` 257, `HASH` 999, `GLOB` 95, `TEST` 5 and `UNCT` 134.
 
@@ -353,9 +356,9 @@ Five files with 32-byte object ids, built in `packages/core/test/smap/golden.tes
 | | |
 |---|---|
 | Length | 1,045 bytes |
-| SHA-256 of the file | `526aa9ba8990a9b6baf77023e823b4f73de5170fece91e061cf908059be3f62b` |
+| SHA-256 of the file | `59b135a40122ae07ee9975b39e3948145018c894a400c7484f9e2bc7ad6468fa` |
 | Snapshot layer | `4e9391e83c4e4ba4d151a800b46f43cc6989320fa83444abbff0ac3ea1219c34` |
-| Static layer | `244884ad07583b2533954b78d27787efe9688d820b7e5c6916299e2674f61ec5` |
+| Static layer | `49a67692864ca575de0e83916c09480f44c94423e4f9e9b848d325714722f930` |
 
 CI asserts vectors 2 and 3 on Ubuntu and on Windows.
 

@@ -326,7 +326,7 @@ describe('selectStatic', () => {
     const base: Files = { ...BASE, 'pnpm-lock.yaml': 'a: 1\n' };
     delete base['package-lock.json'];
     expect(plan(base, base).escalations).toEqual([]);
-    expect(plan(base, { ...base, 'pnpm-lock.yaml': 'a: 2\n' }).escalations).toEqual([{ level: 'L3', cause: 'pnpm-lock.yaml changed and cannot be parsed (pnpm lockfiles are not parsed yet)' }]);
+    expect(plan(base, { ...base, 'pnpm-lock.yaml': 'a: 2\n' }).escalations).toEqual([{ level: 'L3', cause: "pnpm-lock.yaml changed and cannot be parsed (lockfileVersion is missing or not a string, and only '9.0' is read)" }]);
   });
 
   it('runs everything when the lockfile setup changes', () => {

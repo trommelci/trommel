@@ -8,7 +8,7 @@ const sha256 = (text: string): string => createHash('sha256').update(text).diges
 
 export const ONE: TrommelMap = {
   version: 1,
-  engine: 'trommel-static-3',
+  engine: 'trommel-static-4',
   objectFormat: 'sha1',
   rootTree: 'aa'.repeat(20),
   undecodable: 0,

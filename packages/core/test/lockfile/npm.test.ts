@@ -99,9 +99,11 @@ describe('detectLockfile', () => {
   it.each([
     [['package-lock.json'], { kind: 'npm', path: 'package-lock.json' }],
     [['npm-shrinkwrap.json', 'package-lock.json'], { kind: 'npm', path: 'npm-shrinkwrap.json' }],
-    [['pnpm-lock.yaml'], { kind: 'unparseable', format: 'pnpm', path: 'pnpm-lock.yaml', reason: 'pnpm lockfiles are not parsed yet' }],
-    [['yarn.lock'], { kind: 'unparseable', format: 'yarn', path: 'yarn.lock', reason: 'yarn lockfiles are not parsed yet' }],
-    [['bun.lock'], { kind: 'unparseable', format: 'bun', path: 'bun.lock', reason: 'bun lockfiles are not parsed yet' }],
+    [['pnpm-lock.yaml'], { kind: 'pnpm', path: 'pnpm-lock.yaml' }],
+    [['yarn.lock'], { kind: 'yarn', path: 'yarn.lock' }],
+    [['bun.lock'], { kind: 'unparseable', format: 'bun', path: 'bun.lock', reason: 'bun lockfiles are not parsed' }],
+    [['bun.lockb'], { kind: 'unparseable', format: 'bun', path: 'bun.lockb', reason: 'bun lockfiles are not parsed' }],
+    [['pnpm-lock.yaml', 'yarn.lock'], { kind: 'unparseable', format: 'unknown', path: 'pnpm-lock.yaml', reason: 'more than one lockfile: pnpm-lock.yaml, yarn.lock' }],
     [['package-lock.json', 'yarn.lock'], { kind: 'unparseable', format: 'unknown', path: 'package-lock.json', reason: 'more than one lockfile: package-lock.json, yarn.lock' }],
     [[], { kind: 'none' }],
   ] as const)('%j', (files, expected) => {

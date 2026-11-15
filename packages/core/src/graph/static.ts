@@ -20,8 +20,12 @@ import { canonicalJson } from '../canonical-json.ts';
 import type { TreeIndex } from '../git/diff.ts';
 import type { ObjectFormat } from '../git/git.ts';
 import { dialectOf, lexImportsFromBytes, type ImportRecord } from '../lex/ts.ts';
-import type { Lockfile } from '../lockfile/lockfile.ts';
-import { detectLockfile, LOCKFILE_PATHS, npmLockfile, parseNpmLockfile } from '../lockfile/npm.ts';
+import type { Lockfile, LockfileKind } from '../lockfile/lockfile.ts';
+import { lockfileFromModel, type ResolvedModel } from '../lockfile/model.ts';
+import { detectLockfile, LOCKFILE_PATHS, npmLockfile, parseNpmLockfile, type Unparseable } from '../lockfile/npm.ts';
+import { parsePnpmLockfile } from '../lockfile/pnpm.ts';
+import { parseYarnBerryLockfile } from '../lockfile/yarn-berry.ts';
+import { parseYarnClassicLockfile, type ClassicWorkspace } from '../lockfile/yarn-classic.ts';
 import { matchGlobs } from '../resolve/glob.ts';
 import { dirname, Resolver, type Hub, type Resolution, type Vfs } from '../resolve/resolver.ts';
 import { DECLARED, STATIC } from './graph.ts';
@@ -32,8 +36,9 @@ export const MAP_VERSION = 1;
  * What builds the graph and how a plan reads it; a map built by another engine is invalid (L3).
  * `trommel-static-2` has no `e:` nodes: a plan no longer compares the environment (DECISIONS 28).
  * `trommel-static-3` has resolution hubs, whose hashes a plan recomputes (DECISIONS 32).
+ * `trommel-static-4` reads pnpm and yarn lockfiles, whose maps have new `p:` nodes (DECISIONS 36).
  */
-export const ENGINE = 'trommel-static-3';
+export const ENGINE = 'trommel-static-4';
 
 const MODULE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 /** `.d.ts`, `.d.mts`, `.d.cts` and arbitrary-extension declarations such as `.d.css.ts`. */
@@ -54,21 +59,104 @@ export type LockfileState =
   | { readonly kind: 'unparseable'; readonly paths: readonly string[]; readonly reason: string }
   | { readonly kind: 'none' };
 
-/** The root lockfile of a snapshot: parsed when it is npm's (behind the `Lockfile` interface), else every lockfile present. */
+/**
+ * The root lockfile of a snapshot, behind the `Lockfile` interface when it can be read (spec
+ * 2026-11-15-pnpm-yarn-lockfiles §8.2), else every lockfile present and why not.
+ */
 export function readLockfile(vfs: Vfs): LockfileState {
   const present = LOCKFILE_PATHS.filter((path) => vfs.kind(path) === 'file' || vfs.kind(path) === 'symlink').sort(compareStrings);
   const detected = detectLockfile(new Set(present));
   if (detected.kind === 'none') {
     return { kind: 'none' };
   }
-  if (detected.kind === 'npm') {
-    const parsed = parseNpmLockfile(vfs.read(detected.path) ?? '');
-    return parsed.kind === 'npm' ? { kind: 'parsed', lockfile: npmLockfile(parsed, detected.path) } : { kind: 'unparseable', paths: present, reason: parsed.reason };
+  if (detected.kind === 'unparseable') {
+    return { kind: 'unparseable', paths: present, reason: detected.reason };
   }
-  return { kind: 'unparseable', paths: present, reason: detected.reason };
+  const { path } = detected;
+  const text = vfs.read(path) ?? '';
+  const read = (kind: 'pnpm' | 'yarn-berry' | 'yarn-classic', model: ResolvedModel | Unparseable): LockfileState =>
+    'kind' in model ? { kind: 'unparseable', paths: present, reason: model.reason } : { kind: 'parsed', lockfile: lockfileFromModel(kind, path, model) };
+  switch (detected.kind) {
+    case 'npm': {
+      const parsed = parseNpmLockfile(text);
+      return parsed.kind === 'npm' ? { kind: 'parsed', lockfile: npmLockfile(parsed, path) } : { kind: 'unparseable', paths: present, reason: parsed.reason };
+    }
+    case 'pnpm':
+      return read('pnpm', parsePnpmLockfile(text));
+    case 'yarn': {
+      if (!text.includes(CLASSIC_HEADER)) {
+        return read('yarn-berry', parseYarnBerryLockfile(text));
+      }
+      const workspace = classicWorkspace(vfs);
+      return typeof workspace === 'string' ? { kind: 'unparseable', paths: present, reason: workspace } : read('yarn-classic', parseYarnClassicLockfile(text, workspace));
+    }
+  }
 }
 
-export type MapLockfile = { readonly kind: 'npm'; readonly path: string } | { readonly kind: 'unparseable'; readonly paths: readonly string[]; readonly reason: string } | { readonly kind: 'none' };
+/** The line classic yarn writes at the top of its lockfile; a yarn.lock without it is Berry's. */
+const CLASSIC_HEADER = '# yarn lockfile v1';
+const DECLARATION_FIELDS: readonly string[] = ['dependencies', 'devDependencies', 'optionalDependencies'];
+
+/**
+ * What classic yarn's lockfile does not say (spec §6.4): the root and every workspace member as
+ * importers, each with the names its own package.json declares, and the workspace packages by name.
+ * A package.json that cannot be read is the reason the lockfile is unparseable: its declarations
+ * decide what a file loads, and nothing is guessed.
+ */
+function classicWorkspace(vfs: Vfs): ClassicWorkspace | string {
+  const workspaces = new Resolver(vfs).workspaces();
+  const importers = new Map<string, ReadonlyMap<string, string>>();
+  for (const dir of ['', ...workspaces.members]) {
+    if (importers.has(dir)) {
+      continue;
+    }
+    const path = dir === '' ? 'package.json' : `${dir}/package.json`;
+    const declared = declarations(vfs.read(path));
+    if (declared === null) {
+      return `${path} cannot be read`;
+    }
+    importers.set(dir, declared);
+  }
+  return { importers, packages: workspaces.byName };
+}
+
+/** The string-valued entries of a package.json's three dependency fields, a later field winning; null if it cannot be read. */
+function declarations(text: string | null): Map<string, string> | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(text ?? '');
+  } catch {
+    return null;
+  }
+  if (!isRecord(json)) {
+    return null;
+  }
+  const declared = new Map<string, string>();
+  for (const field of DECLARATION_FIELDS) {
+    const value = json[field];
+    if (value === undefined) {
+      continue;
+    }
+    if (!isRecord(value)) {
+      return null;
+    }
+    for (const [name, range] of Object.entries(value)) {
+      if (typeof range === 'string') {
+        declared.set(name, range);
+      }
+    }
+  }
+  return declared;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export type MapLockfile =
+  | { readonly kind: LockfileKind; readonly path: string }
+  | { readonly kind: 'unparseable'; readonly paths: readonly string[]; readonly reason: string }
+  | { readonly kind: 'none' };
 
 export interface TrommelMap {
   readonly version: number;
@@ -261,7 +349,9 @@ export function buildStaticMap(input: StaticInput): TrommelMap {
   const b = new MapBuilder(index, resolver);
   const files = vfs.files();
 
-  // Installed packages first, then the ⊥ nodes, so a missing dependency can never shadow an installed one.
+  // The lockfile's nodes and their edges, whatever its format (spec 2026-11-15-pnpm-yarn-lockfiles
+  // §8.2). Hashed nodes first, then the ⊥ nodes, so a missing dependency can never shadow an
+  // installed one.
   if (lockfile.kind === 'parsed') {
     const { nodes } = lockfile.lockfile;
     for (const [key, hash] of nodes) {
@@ -356,7 +446,7 @@ export function buildStaticMap(input: StaticInput): TrommelMap {
     rootTree: index.rootOid,
     undecodable: index.undecodable,
     config: input.config ?? null,
-    lockfile: lockfile.kind === 'parsed' ? { kind: 'npm', path: lockfile.lockfile.path } : lockfile,
+    lockfile: lockfile.kind === 'parsed' ? { kind: lockfile.lockfile.kind, path: lockfile.lockfile.path } : lockfile,
     snapshot: index.entries().map((entry) => [entry.mode, entry.oid, entry.path] as const),
     nodes: Object.fromEntries(b.nodes),
     edges: Object.fromEntries([...b.edges].map(([from, out]) => [from, Object.fromEntries(out)])),
@@ -396,8 +486,17 @@ function addResolution(b: MapBuilder, from: string, path: string, record: Import
   // A bare specifier may load from node_modules even when tsconfig paths also found a file.
   const onlyPackage = resolution.kind === 'external';
   if (lockfile.kind === 'parsed') {
-    const key = lockfile.lockfile.locate(name, dirname(path));
+    const lock = lockfile.lockfile;
+    const key = lock.locate(name, dirname(path));
     if (key !== null) {
+      // A key the map does not have yet is a name node (spec §6.4, case 2), which the lockfile gives
+      // on demand. Its edges go to entries, and every entry is in the map already.
+      if (!b.nodes.has(key)) {
+        b.node(key, lock.hash(key) ?? null);
+        for (const dependency of lock.dependencies(key)) {
+          b.edge(key, dependency, STATIC);
+        }
+      }
       b.edge(from, key, STATIC);
       return;
     }

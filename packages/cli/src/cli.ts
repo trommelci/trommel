@@ -153,7 +153,7 @@ async function diff(command: Extract<Command, { name: 'diff' }>, io: Io): Promis
   const before = readLockfile(base.vfs);
   const after = readLockfile(head.vfs);
   const packages =
-    before.kind === 'parsed' && after.kind === 'parsed'
+    before.kind === 'parsed' && after.kind === 'parsed' && before.lockfile.kind === 'npm' && after.lockfile.kind === 'npm'
       ? { before: before.lockfile.path, after: after.lockfile.path, ...diffNodes(before.lockfile, after.lockfile) }
       : { before: describe(before), after: describe(after), unknown: 'package changes are only computed between two npm lockfiles' };
   io.stdout(

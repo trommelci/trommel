@@ -170,9 +170,9 @@ const LOCKFILES: readonly (readonly [string, Unparseable['format']])[] = [
 /** Every root lockfile name `detectLockfile` knows. */
 export const LOCKFILE_PATHS: readonly string[] = LOCKFILES.map(([path]) => path);
 
-export type DetectedLockfile = { readonly kind: 'npm'; readonly path: string } | (Unparseable & { readonly path: string }) | { readonly kind: 'none' };
+export type DetectedLockfile = { readonly kind: 'npm' | 'pnpm' | 'yarn'; readonly path: string } | (Unparseable & { readonly path: string }) | { readonly kind: 'none' };
 
-/** Which root lockfile the install uses. Only npm's is parsed; others, or several kinds at once, are unparseable. */
+/** Which root lockfile the install uses. npm's, pnpm's and yarn's are read; bun's, or several kinds at once, are unparseable. */
 export function detectLockfile(rootFiles: ReadonlySet<string>): DetectedLockfile {
   const present = LOCKFILES.filter(([path]) => rootFiles.has(path));
   if (present.length === 0) {
@@ -184,10 +184,10 @@ export function detectLockfile(rootFiles: ReadonlySet<string>): DetectedLockfile
     const names = present.map(([p]) => p).sort(compareStrings);
     return { kind: 'unparseable', format: 'unknown', path: names[0]!, reason: `more than one lockfile: ${names.join(', ')}` };
   }
-  if (format === 'npm') {
-    return { kind: 'npm', path };
+  if (format === 'npm' || format === 'pnpm' || format === 'yarn') {
+    return { kind: format, path };
   }
-  return { kind: 'unparseable', format, path, reason: `${format} lockfiles are not parsed yet` };
+  return { kind: 'unparseable', format, path, reason: `${format} lockfiles are not parsed` };
 }
 
 /** node_modules directories Node searches from `dir`, nearest first (never `node_modules/node_modules`). */
