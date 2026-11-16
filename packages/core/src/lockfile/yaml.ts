@@ -3,6 +3,7 @@
 // names its line, so a reader refuses the lockfile instead of guessing at it. Every scalar is a
 // string, a mapping is a Map (a key such as `__proto__` is an ordinary key), a sequence an array.
 // One pass over the lines; the only recursion is flow nesting, which is bounded by FLOW_DEPTH.
+// Block nesting is bounded too, by BLOCK_DEPTH, because a caller may recurse on what it is given.
 
 export type YamlValue = string | readonly YamlValue[] | YamlMap;
 export type YamlMap = ReadonlyMap<string, YamlValue>;
@@ -18,6 +19,9 @@ export class YamlError extends Error {
 
 /** How deep flow collections may nest: `{a: {b: [x]}}` is three levels. */
 export const FLOW_DEPTH = 8;
+
+/** How deep block mappings may nest, the root being the first level. pnpm needs about 6. */
+export const BLOCK_DEPTH = 64;
 
 interface Row {
   no: number;
@@ -131,6 +135,9 @@ function parseBlock(rows: readonly Row[]): Map<string, YamlValue> {
       }
       frame.map.set(key, items);
     } else {
+      if (stack.length >= BLOCK_DEPTH) {
+        throw new YamlError(`block mappings nested deeper than ${BLOCK_DEPTH}`, next.no);
+      }
       const child = new Map<string, YamlValue>();
       frame.map.set(key, child);
       stack.push({ indent: next.indent, map: child });
