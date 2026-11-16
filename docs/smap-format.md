@@ -174,7 +174,11 @@ u8 1, 32 bytes        a SHA-256
 u8 2, str             any other text
 ```
 
-A value that is 64 lowercase hex digits is always form 1. Form 2 is for package hashes, which are npm integrity strings, `link:` targets, or a version and a URL, and, for a pnpm or yarn lookup location, the id of the entry it resolves to. The hashes of pnpm and yarn entries, name nodes and pnpm's own document are SHA-256, form 1.
+A value that is 64 lowercase hex digits is always form 1. Form 2 is for package hashes. Its values are:
+- for an npm install location, an integrity string, a version and a URL, or `link:<dir>` for a workspace link;
+- for a pnpm or yarn lookup location, the id of the entry it resolves to, `link:<dir>` for a workspace package, or `<name>@*` when the lockfile does not resolve the reference.
+
+The hashes of pnpm and yarn entries, name nodes and pnpm's own document are SHA-256, form 1. A name node with no entries, no declarations and no dependents is ⊥, form 0. That happens to the name node of a Berry peer that no entry has as its name, no workspace package declares and no entry depends on.
 
 ### 4.5 `GLOB`
 

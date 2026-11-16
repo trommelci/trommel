@@ -63,7 +63,7 @@ These columns come from the GitHub API on 2026-11-11.
 
 **What this implies.**
 - Only 2 of the 26 repositories use an npm lockfile: 19 use pnpm and 5 use yarn.
-- `core/lockfile/npm` (roadmap day 8) therefore covers almost none of the replay set. The pnpm and yarn parsers, still to do in M1, are a prerequisite for M4, not a nice-to-have.
+- `core/lockfile/npm` (roadmap day 8) therefore covered almost none of the replay set, and the pnpm and yarn readers were a prerequisite for M4. They are built (DECISIONS 35 and 36), and the next section shows which formats they read.
 - Jest is thin among active, permissive repositories: prettier, babel, and Jest itself. So the Vitest/Jest balance will lean towards Vitest.
 
 **Still to do before the corpus is frozen in M4:**
@@ -71,6 +71,24 @@ These columns come from the GitHub API on 2026-11-11.
 - read the licenses of date-fns, maplibre and every NOASSERTION repository;
 - pin the Node version for each repository;
 - measure each suite's flake rate over 3 reruns at the same commit.
+
+## Lockfile formats (2026-11-15)
+
+The lockfile header of each of the 24 pnpm and yarn repositories above, at its head and at its last commit before 2025-11-15. It was gathered with Ojas's approval for the lockfile design ([§5](../docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md)).
+
+| Format | At head | A year ago | Read since DECISIONS 36 |
+|---|---|---|---|
+| pnpm 9.0, two documents (pnpm 12) | 10: vue core, vite, TanStack/query, trpc, h3, typescript-eslint, vueuse, docusaurus, hono, starlight | none | yes |
+| pnpm 9.0, one document | 9: zod, svelte, lexical, vitest, date-fns, msw, zustand, jotai, redux-toolkit | 13 | yes |
+| Berry 10 | prettier, babel | none | yes |
+| Berry 8 | es-toolkit | prettier, babel, es-toolkit, redux-toolkit | yes |
+| Berry 6 | none | typescript-eslint | no |
+| classic v1 | excalidraw, immer | excalidraw, immer, docusaurus | yes |
+| other | none | lexical: npm v2; hono: `bun.lock`; date-fns: no lockfile found | npm v2 yes; bun no |
+
+- **Every lockfile at head is read.** Formats that are not read stay unparseable, so a change to one runs every test (L3).
+- **Five repositories changed lockfile kind within the year.** A replay that crosses such a change runs everything once, because a change of the lockfile's kind or path is L3.
+- **The corpus check is still to run.** The design's §9.4 plans every lockfile-only commit of the last 12 months on hono and excalidraw, and it needs Ojas's approval to clone them (DECISIONS 36).
 
 ## Collector set
 
