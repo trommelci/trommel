@@ -10,7 +10,7 @@ import { parseYamlSubset, YamlError } from '../../src/lockfile/yaml.ts';
 import { parseYarnBerryLockfile } from '../../src/lockfile/yarn-berry.ts';
 import { parseYarnClassicLockfile } from '../../src/lockfile/yarn-classic.ts';
 
-// Totality (spec 2026-11-15-pnpm-yarn-lockfiles §7, DECISIONS 35): whatever the text, a reader gives
+// Totality (spec 2026-11-15-pnpm-yarn-lockfiles §7, DECISIONS 36): whatever the text, a reader gives
 // a model or an `unparseable`, and nothing is thrown.
 
 function fixture(name: string): string {

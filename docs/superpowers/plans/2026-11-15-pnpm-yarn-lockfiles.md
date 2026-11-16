@@ -30,7 +30,7 @@
   - a name node is `p:pnpm:<name>@*` or `p:yarn:<name>@*`;
   - pnpm's own document is `p:pnpm:#env`.
 - **Engine and golden hashes:** the engine stays `trommel-static-3` through Task 8, and neither golden hash (`test/graph/golden.test.ts`, `test/smap/golden.test.ts`) may move until then. Task 9 makes the engine `trommel-static-4` and moves both hashes by the engine id alone.
-- **Tests:** tests come first. Property tests are seeded (`TROMMEL_FC_SEED`, default `20261116`). After each test file passes, mutate the code by hand to prove the tests can fail, and note the mutants for DECISIONS 35 or 36.
+- **Tests:** tests come first. Property tests are seeded (`TROMMEL_FC_SEED`, default `20261116`). After each test file passes, mutate the code by hand to prove the tests can fail, and note the mutants for DECISIONS 37 or 37.
 - **Commits:** small and conventional, made with `git commit -s`, each ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Ask Ojas first** before the first push, any merge, downloading the five samples again (spec §9.5) and cloning corpus repositories (spec §9.4). Never force-push.
 - **Commands:** one test file with `npm test -- <path>`. The whole suite with `npm test`, plus `npm run lint`, `npm run typecheck` and `npm run check:deps`.
@@ -377,7 +377,7 @@ export function parseYarnClassicLockfile(text: string, workspace: ClassicWorkspa
 **Files:**
 - Test: `packages/core/test/lockfile/fuzz.test.ts`
 - Create: `bench/lockfile.ts`, `bench/results/2026-11-<day>-lockfile-win32.json`
-- Modify: `bench/README.md`, `DECISIONS.md` (entry 35), `HANDOFF.md` (§1 status and §4 repository map), `packages/core/src/index.ts` (export the readers and the Task 3 names)
+- Modify: `bench/README.md`, `DECISIONS.md` (entry 36), `HANDOFF.md` (§1 status and §4 repository map), `packages/core/src/index.ts` (export the readers and the Task 3 names)
 
 - [ ] **Step 1: Write the totality property.** For each fixture of Tasks 4 to 6 and its reader (classic with an empty `ClassicWorkspace`), make seeded mutations: truncate at a random offset, delete, duplicate or swap a random line, or replace a random character. Each result is a model or `kind: 'unparseable'`, and nothing throws. 2,000 runs per reader.
 - [ ] **Step 2: Write the pathological cases:**
@@ -394,9 +394,9 @@ export function parseYarnClassicLockfile(text: string, workspace: ClassicWorkspa
   - unresolved references: hono 0, zod 5, prettier 1, es-toolkit 0, excalidraw 0.
 
   Record the numbers in `bench/README.md`.
-- [ ] **Step 6: Write DECISIONS 35:** the subset, reading past fields, the refusals, the sample numbers and the mutants of Tasks 2 to 7. Update HANDOFF §1 and §4.
+- [ ] **Step 6: Write DECISIONS 36:** the subset, reading past fields, the refusals, the sample numbers and the mutants of Tasks 2 to 7. Update HANDOFF §1 and §4.
 - [ ] **Step 7: Run** `npm test`, `npm run lint`, `npm run typecheck` and `npm run check:deps`. Expected: all pass, and the golden hashes are unchanged.
-- [ ] **Step 8: Commit** with `git commit -s -m "test(core/lockfile): totality, benchmark and DECISIONS 35"`. Ask Ojas before pushing, then open the pull request `m1/lockfile-readers` → `main`.
+- [ ] **Step 8: Commit** with `git commit -s -m "test(core/lockfile): totality, benchmark and DECISIONS 36"`. Ask Ojas before pushing, then open the pull request `m1/lockfile-readers` → `main`.
 
 ---
 
@@ -555,7 +555,7 @@ export function loads(install: Install, layout: Layout, test: string): readonly 
   - dropping `dependents` from the name-node hash;
   - walking up to an ancestor's lookup instead of taking the name node.
 
-  Note them for DECISIONS 36.
+  Note them for DECISIONS 37.
 - [ ] **Step 4: Commit:** `git commit -s -m "test(core/select): lockfile soundness over generated installs"`.
 
 ### Task 12: `trommel diff` over any lockfile
@@ -579,7 +579,7 @@ export function loads(install: Install, layout: Layout, test: string): readonly 
 ### Task 13: Proof, documents and the second pull request
 
 **Files:**
-- Modify: `DECISIONS.md` (entry 36), `docs/architecture.md` (§3.1 `p:` kinds, §3.5 as built), `HANDOFF.md` (§1, §4, §8, §11, §13), `docs/roadmap.md` (the progress line), `bench/README.md`, `bench/CORPUS.md` (the survey table of spec §5)
+- Modify: `DECISIONS.md` (entry 37), `docs/architecture.md` (§3.1 `p:` kinds, §3.5 as built), `HANDOFF.md` (§1, §4, §8, §11, §13), `docs/roadmap.md` (the progress line), `bench/README.md`, `bench/CORPUS.md` (the survey table of spec §5)
 
 - [ ] **Step 1: Replay this repository's last 70 non-merge commits** with `main`'s CLI and this branch's, as for DECISIONS 32 and 34:
   - Extract `main` with `git archive <main-sha> packages package.json bench`, and add junctions for its `@trommel/core` and `@trommel/cli`.
@@ -592,15 +592,15 @@ export function loads(install: Install, layout: Layout, test: string): readonly 
   Expected: no L3 that names an unreadable lockfile.
 - [ ] **Step 3: Run** `node bench/static-graph.ts`. Expected: this repository's numbers match `main`'s within noise.
 - [ ] **Step 4: Write the documents.**
-  - **DECISIONS 36:** the cut-over, the engine, the replay, the corpus counts and the mutants.
+  - **DECISIONS 37:** the cut-over, the engine, the replay, the corpus counts and the mutants.
   - **Architecture:** the `p:` kinds in §3.1, and §3.5 as built.
   - **HANDOFF:**
     - §1: the status, and that each branch should expect one run-all plan;
     - §4: the repository-map rows;
     - §8: strike the lockfile item;
     - §11: add the known gaps (second-order hoisting moves, classic yarn's peers, the name node's precision on pnpm monorepos), and remove "Only npm lockfiles are parsed";
-    - §13: entries 35 and 36.
+    - §13: entries 36 and 37.
   - **Roadmap:** the progress line.
   - **bench/README.md**, and the spec §5 survey table in **bench/CORPUS.md**.
 - [ ] **Step 5: Run** `npm test`, `npm run lint`, `npm run typecheck` and `npm run check:deps`. Expected: all pass.
-- [ ] **Step 6: Commit** with `git commit -s -m "docs: pnpm and yarn lockfiles are parsed (DECISIONS 36)"`. Ask Ojas before pushing, then open the pull request `m1/lockfile-cutover`. Retarget it to `main` once `m1/lockfile-readers` is merged.
+- [ ] **Step 6: Commit** with `git commit -s -m "docs: pnpm and yarn lockfiles are parsed (DECISIONS 37)"`. Ask Ojas before pushing, then open the pull request `m1/lockfile-cutover`. Retarget it to `main` once `m1/lockfile-readers` is merged.
