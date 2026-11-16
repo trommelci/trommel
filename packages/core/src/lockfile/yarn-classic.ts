@@ -42,7 +42,6 @@ interface Block {
   readonly name: string;
   readonly version: string;
   readonly content: { readonly integrity: string } | { readonly resolved: string };
-  /** name → range, in file order. */
   /** name → the ranges listed for it (more than one when both dependency fields list it). */
   readonly dependencies: ReadonlyMap<string, readonly string[]>;
 }
@@ -127,7 +126,7 @@ interface Open {
 }
 
 function read(text: string, workspace: ClassicWorkspace): ResolvedModel {
-  const lines = (text.startsWith('﻿') ? text.slice(1) : text).split('\n');
+  const lines = (text.startsWith('\uFEFF') ? text.slice(1) : text).split('\n');
   const blocks: Block[] = [];
   let header = false;
   let open: Open | null = null;

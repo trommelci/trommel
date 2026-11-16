@@ -52,15 +52,15 @@ const results = [];
 for (const file of files) {
   const text = readFileSync(file, 'utf8');
   const name = basename(file);
-  const seconds: number[] = [];
+  const milliseconds: number[] = [];
   let model: ReturnType<typeof read> = read(name, text);
   for (let run = 0; run < RUNS; run++) {
     const start = performance.now();
     model = read(name, text);
-    seconds.push(performance.now() - start);
+    milliseconds.push(performance.now() - start);
   }
-  seconds.sort((a, b) => a - b);
-  const medianMs = Math.round(seconds[Math.floor(RUNS / 2)]! * 10) / 10;
+  milliseconds.sort((a, b) => a - b);
+  const medianMs = Math.round(milliseconds[Math.floor(RUNS / 2)]! * 10) / 10;
   const bytes = Buffer.byteLength(text);
   if ('kind' in model) {
     results.push({ file: name, reader: readerOf(name, text), bytes, medianMs, refused: model.reason });
