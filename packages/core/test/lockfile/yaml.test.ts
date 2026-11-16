@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { FLOW_DEPTH, parseYamlSubset, YamlError } from '../../src/lockfile/yaml.ts';
+import { BLOCK_DEPTH, FLOW_DEPTH, parseYamlSubset, YamlError } from '../../src/lockfile/yaml.ts';
 import type { YamlMap, YamlValue } from '../../src/lockfile/yaml.ts';
 
 function m(entries: [string, YamlValue][]): YamlMap {
@@ -83,6 +83,23 @@ describe('parseYamlSubset', () => {
     expect(() => parseYamlSubset(`a: ${deep(FLOW_DEPTH)}\n`)).not.toThrow();
   });
 
+  /** Block mappings nested `n` levels deep, the root being the first: line k opens level k + 1. */
+  const nested = (n: number): string =>
+    Array.from({ length: n }, (_, k) => '  '.repeat(k) + (k < n - 1 ? `k${k}:` : 'leaf: x')).join('\n') + '\n';
+
+  it('accepts block nesting to 64 levels', () => {
+    expect(BLOCK_DEPTH).toBe(64);
+    let value: YamlValue | undefined = parseYamlSubset(nested(64))[0];
+    for (let k = 0; k < 63; k++) {
+      value = (value as YamlMap).get(`k${k}`);
+    }
+    expect(value).toEqual(m([['leaf', 'x']]));
+  });
+
+  it('names block nesting deeper than 64 levels as such', () => {
+    expect(() => parseYamlSubset(nested(65))).toThrow(/block mappings nested deeper than 64 \(line 65\)$/);
+  });
+
   it.each<[string, string, number]>([
     ['a tab in the indentation', 'a:\n\t\tb: c\n', 2],
     ['an anchor', 'a:\n  b: &a c\n', 2],
@@ -98,6 +115,7 @@ describe('parseYamlSubset', () => {
     ['a flow collection that continues on the next line', 'a: [x,\n  y]\n', 1],
     ['a plain scalar that continues on the next line', 'a: b\n  c\n', 2],
     ['flow nesting deeper than FLOW_DEPTH', `a: b\nc: ${deep(FLOW_DEPTH + 1)}\n`, 2],
+    ['block nesting of 65 levels', nested(65), 65],
     ['an unterminated single quote', "a: 'b\n", 1],
     ['an unterminated double quote', 'x: y\na: "b\n', 2],
     ['a plain scalar starting with @', 'a: @scope/x\n', 1],

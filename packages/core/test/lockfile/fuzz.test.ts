@@ -4,9 +4,10 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import type { Unparseable } from '../../src/lockfile/npm.ts';
+import { lockfileFromModel } from '../../src/lockfile/model.ts';
 import type { ResolvedModel } from '../../src/lockfile/model.ts';
 import { parsePnpmLockfile } from '../../src/lockfile/pnpm.ts';
-import { parseYamlSubset, YamlError } from '../../src/lockfile/yaml.ts';
+import { FLOW_DEPTH, parseYamlSubset, YamlError } from '../../src/lockfile/yaml.ts';
 import { parseYarnBerryLockfile } from '../../src/lockfile/yarn-berry.ts';
 import { parseYarnClassicLockfile } from '../../src/lockfile/yarn-classic.ts';
 
@@ -112,6 +113,35 @@ describe('pathological inputs', () => {
     expect(() => parseYamlSubset(`a: ${deep}\n`)).toThrow(/nest|depth/i);
     expect(parsePnpmLockfile(`lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies: ${deep}\n`)).toMatchObject({ kind: 'unparseable', format: 'pnpm' });
     expect(parseYarnBerryLockfile(`__metadata:\n  version: 10\n\n"a@npm:1":\n  version: 1\n  resolution: "a@npm:1"\n  dependencies: ${deep}\n`)).toMatchObject({ kind: 'unparseable', format: 'yarn' });
+  });
+
+  /**
+   * A pnpm lockfile whose one `resolution` mapping holds `levels` block mappings, one inside the
+   * other, under a flow collection FLOW_DEPTH deep. The document's block nesting is `levels + 4`.
+   */
+  function deepResolution(levels: number): string {
+    const lines = ["lockfileVersion: '9.0'", '', 'importers:', '', '  .:', '    dependencies:', '      a:', '        specifier: 1.0.0', '        version: 1.0.0', '', 'packages:', '', '  a@1.0.0:', '    resolution:'];
+    for (let k = 0; k < levels; k++) {
+      lines.push(`${'  '.repeat(k + 3)}k:`);
+    }
+    lines.push(`${'  '.repeat(levels + 3)}integrity: ${'['.repeat(FLOW_DEPTH)}x${']'.repeat(FLOW_DEPTH)}`);
+    lines.push('', 'snapshots:', '', '  a@1.0.0: {}', '');
+    return lines.join('\n');
+  }
+
+  it('refuses a pnpm resolution nested 2,000 levels deep, so building its lockfile cannot overflow the stack', () => {
+    const result = parsePnpmLockfile(deepResolution(2000));
+    // Were it read, hashing the entry would recurse through canonicalJson 2,000 levels deep and throw a RangeError.
+    if (!('kind' in result)) lockfileFromModel('pnpm', 'pnpm-lock.yaml', result);
+    expect(result).toMatchObject({ kind: 'unparseable', format: 'pnpm' });
+    expect((result as Unparseable).reason).toMatch(/block mappings nested deeper than 64 \(line 76\)$/);
+  });
+
+  it('builds the lockfile of a resolution at the 64-level limit', () => {
+    const result = parsePnpmLockfile(deepResolution(60));
+    expect(result).not.toHaveProperty('kind');
+    const lock = lockfileFromModel('pnpm', 'pnpm-lock.yaml', result as ResolvedModel);
+    expect(lock.hash('p:pnpm:a@1.0.0')).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('reads a 1 MB single-line value in one pass', () => {
