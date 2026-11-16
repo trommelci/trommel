@@ -85,7 +85,7 @@ All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in 
 
 This reads each lockfile with its reader, picked by file name: `*pnpm-lock.yaml` is pnpm, and `*yarn.lock` is classic yarn when the text holds `# yarn lockfile v1`, else Berry. Classic yarn is read with an empty `ClassicWorkspace`. It prints the bytes, the median parse time of 5 runs, and the counts of entries, importers, references and unresolved references (those that point at a name node). A refusal is printed and recorded, not hidden.
 
-The five samples of the design (spec §9.5) are the lockfiles of hono and zod (pnpm), prettier and es-toolkit (Berry) and excalidraw (classic). They are downloaded from each project's default branch, outside this repository, and recorded by base name.
+The five samples of the design (spec §9.5) are the lockfiles of hono and zod (pnpm), prettier and es-toolkit (Berry) and excalidraw (classic). They were downloaded from the commits spec §9.5 pins, outside this repository, and are recorded by base name.
 
 | Date | Platform | Sample | Bytes | Median | Entries | Importers | References | Unresolved |
 |---|---|---|---|---|---|---|---|---|

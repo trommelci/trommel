@@ -166,7 +166,7 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `712 passed` from `npm test` (after DECISIONS 34), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `896 passed` from `npm test` (after DECISIONS 36), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
