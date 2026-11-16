@@ -38,6 +38,8 @@ const ENV_KEY = 'p:pnpm:#env';
 /** A name node's key is `<prefix><name>@*`; `@*` cannot occur in an id (§6.1). */
 const ANY = '@*';
 const NONE: readonly string[] = Object.freeze([]);
+/** The root lookup `p:npm:node_modules/<name>`, which is also the builder's ⊥ node of case 3 (§6.4). */
+const ROOT_LOOKUP = 'p:npm:node_modules/';
 
 /**
  * Builds the lockfile a model stands for. Precondition: `modelProblem(model)` is null, so that no id
@@ -196,7 +198,7 @@ class ModelLockfile implements Lockfile {
     if (known !== undefined) {
       return known;
     }
-    const name = this.nameOfKey(key);
+    const name = this.nameOfKey(key) ?? this.nameOfUnknownLookup(key);
     return name === null ? undefined : this.nameNode(name).hash;
   }
 
@@ -205,7 +207,7 @@ class ModelLockfile implements Lockfile {
     if (edges !== undefined) {
       return edges;
     }
-    const name = this.nameOfKey(key);
+    const name = this.nameOfKey(key) ?? this.nameOfUnknownLookup(key);
     return name === null ? NONE : this.nameNode(name).edges;
   }
 
@@ -217,12 +219,30 @@ class ModelLockfile implements Lockfile {
       return lookupKey(own, name);
     }
     // Case 2: the lockfile knows the name, through a declaration or an entry of that name.
-    const lists = this.lists.get(name);
-    if (lists !== undefined && (lists.declared.length > 0 || lists.entries.length > 0)) {
+    if (this.knows(name)) {
       return this.nameKey(name);
     }
     // Case 3: the builder's ⊥ node for a name the lockfile does not know.
     return null;
+  }
+
+  /** Whether a declaration or an entry has this name: what locate calls knowing it. */
+  private knows(name: string): boolean {
+    const lists = this.lists.get(name);
+    return lists !== undefined && (lists.declared.length > 0 || lists.entries.length > 0);
+  }
+
+  /**
+   * The name of a root lookup that is not a node, when this lockfile knows that name, or null. Such a
+   * key is case 3's ⊥ node, built when an earlier lockfile did not know the name. It stands for the
+   * name node here, so a planner sees the import's target change once the name is known (§6.4).
+   */
+  private nameOfUnknownLookup(key: string): string | null {
+    if (!key.startsWith(ROOT_LOOKUP)) {
+      return null;
+    }
+    const name = key.slice(ROOT_LOOKUP.length);
+    return this.knows(name) ? name : null;
   }
 
   /** The deepest importer whose directory is `dir` or contains it on a `/` boundary. */

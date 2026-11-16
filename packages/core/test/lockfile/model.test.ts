@@ -232,6 +232,48 @@ describe('lockfileFromModel', () => {
     expect(lock.hash('p:pnpm:vitest@*')).toBeNull();
   });
 
+  it("case 3's root lookup follows the name node once the lockfile knows the name (§6.4)", () => {
+    const yarn = (m: ResolvedModel): Lockfile => lockfileFromModel('yarn-classic', 'yarn.lock', m);
+    const root = 'p:npm:node_modules/foo';
+    // At B nothing knows foo: the builder gave the import a ⊥ node, and this lockfile has no hash for it.
+    const unknown = yarn(model([['', []], ['packages/b', [['bar', entry('bar@1.0.0')]]]], [['bar@1.0.0', {}]]));
+    expect(unknown.hash(root)).toBeUndefined();
+    expect(unknown.dependencies(root)).toEqual([]);
+
+    // A non-root importer declares foo: the lookup is foo's name node.
+    const declared = yarn(model([['', []], ['packages/b', [['foo', entry('foo@1.0.0')]]]], [['foo@1.0.0', {}]]));
+    expect(declared.nodes.has(root)).toBe(false);
+    expect(declared.hash(root)).toMatch(/^[0-9a-f]{64}$/);
+    expect(declared.hash(root)).toBe(declared.hash('p:yarn:foo@*'));
+    expect(declared.dependencies(root)).toEqual(['p:yarn:foo@1.0.0']);
+
+    // foo is only an entry, a dependency of bar: likewise.
+    const dependency = yarn(model([['', []], ['packages/b', [['bar', entry('bar@1.0.0')]]]], [['bar@1.0.0', { deps: [['foo', entry('foo@1.0.0')]] }], ['foo@1.0.0', {}]]));
+    expect(dependency.hash(root)).toMatch(/^[0-9a-f]{64}$/);
+    expect(dependency.hash(root)).toBe(dependency.hash('p:yarn:foo@*'));
+    expect(dependency.dependencies(root)).toEqual(dependency.dependencies('p:yarn:foo@*'));
+    expect(dependency.dependencies(root)).toEqual(['p:yarn:foo@1.0.0']);
+
+    // A scoped name, in pnpm.
+    const scoped = pnpm(model([['packages/b', [['@s/foo', entry('@s/foo@1.0.0')]]]], [['@s/foo@1.0.0', {}]]));
+    expect(scoped.hash('p:npm:node_modules/@s/foo')).toBe(scoped.hash('p:pnpm:@s/foo@*'));
+    expect(scoped.dependencies('p:npm:node_modules/@s/foo')).toEqual(['p:pnpm:@s/foo@1.0.0']);
+
+    // A name known only as an unresolved dependency is not known, as for locate; nor is an empty name.
+    const ghost = pnpm(model([['', []]], [['x@1.0.0', { deps: [['ghost', unresolved]] }]]));
+    expect(ghost.hash('p:npm:node_modules/ghost')).toBeUndefined();
+    expect(ghost.dependencies('p:npm:node_modules/ghost')).toEqual([]);
+    expect(declared.hash('p:npm:node_modules/')).toBeUndefined();
+    // Only the root lookup follows: a lookup under another importer that is not a node stays unknown.
+    expect(declared.hash('p:npm:packages/a/node_modules/foo')).toBeUndefined();
+    expect(declared.dependencies('p:npm:packages/a/node_modules/foo')).toEqual([]);
+
+    // A root lookup that exists is unaffected.
+    const own = yarn(model([['', [['foo', entry('foo@1.0.0')]]], ['packages/b', [['foo', entry('foo@2.0.0')]]]], [['foo@1.0.0', {}], ['foo@2.0.0', {}]]));
+    expect(own.hash(root)).toBe('foo@1.0.0');
+    expect(own.dependencies(root)).toEqual(['p:yarn:foo@1.0.0']);
+  });
+
   it('a name the lockfile knows only as an unresolved dependency is not known to locate', () => {
     const lock = pnpm(model([['', []]], [['x@1.0.0', { deps: [['ghost', unresolved]] }]]));
     expect(lock.locate('ghost', '')).toBeNull();
@@ -520,7 +562,7 @@ describe('the order a model was built in', () => {
     fc.assert(
       fc.property(specArb, (spec) => {
         const lock = build(spec);
-        for (const key of [...lock.nodes.keys(), ...NAMES.map((name) => `p:pnpm:${name}@*`)]) {
+        for (const key of [...lock.nodes.keys(), ...NAMES.map((name) => `p:pnpm:${name}@*`), ...NAMES.map((name) => lookupKey('', name))]) {
           for (const target of lock.dependencies(key)) {
             expect(lock.hash(target), `${key} → ${target}`).not.toBeUndefined();
             // Stronger: a target is a node the lockfile lists, so a planner that walks nodes reaches it.
@@ -537,7 +579,7 @@ describe('the order a model was built in', () => {
       fc.property(specArb, specArb, (left, right) => {
         const a = build(left);
         const b = build(right);
-        const keys = new Set([...a.nodes.keys(), ...b.nodes.keys(), ...NAMES.map((name) => `p:pnpm:${name}@*`)]);
+        const keys = new Set([...a.nodes.keys(), ...b.nodes.keys(), ...NAMES.map((name) => `p:pnpm:${name}@*`), ...NAMES.map((name) => lookupKey('', name))]);
         for (const key of keys) {
           const hash = a.hash(key);
           if (hash !== undefined && hash === b.hash(key)) {
