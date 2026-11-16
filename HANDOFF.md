@@ -174,7 +174,7 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `937 passed` from `npm test` (after DECISIONS 37), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `945 passed` from `npm test` (after DECISIONS 37), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
@@ -500,7 +500,7 @@ The review recommends an answer to each of 1, 2, 4 and 5 in its §4. In short: m
 
 ## 11. Known gaps and limits in the merged code
 
-These are honest limits, not bugs. Each one errs towards running more tests.
+These are honest limits, not bugs. Most err towards running more tests; the lockfile gaps below can skip one.
 
 - **Lexer.** `typeof import('x')` in a type position counts as a dynamic import. JSX detection is a heuristic based on where an expression can start. A would-be regex that reaches the end of its line is reinterpreted as division.
 - **Resolver.**
@@ -522,13 +522,14 @@ These are honest limits, not bugs. Each one errs towards running more tests.
   - The cache key in `trommel.yml` does not name the map format. A cache saved before the cut-over holds only `map.json`, which reads as "no map" and runs everything once. The key layout of ADR-0021 is M3 work.
   - When any directory listing changed, a plan recomputes every `r:` and `c:` hub at the head (0.19 s at 10,000 files). Hubs are not yet limited to the directories that changed.
   - A probed directory's listing is part of its hub's hash, as its `d:` node was, so a file added to `src/d/` reruns the importers of `./d` even when no candidate changed (DECISIONS 32).
-  - **Lockfiles** (DECISIONS 37; [design](docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md) §6.4 and §6.7). These are known gaps within Ojas's decisions (design §12); the unmet-peer case awaits his confirmation (§10 item 16). Every would-skip in M1 is unproven, and M2's records, which see the file a test loaded, close the first two.
+  - **Lockfiles** (DECISIONS 37; [design](docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md) §6.4 and §6.7). These are known gaps within Ojas's decisions (design §12); the unmet-peer case awaits his confirmation (§10 item 16). Every would-skip in M1 is unproven, and M2's records, which see the file a test loaded, close the first three.
     - **Second-order hoisting moves.** In a hoisted install (classic yarn, Berry's `node-modules`, pnpm's `node-linker=hoisted`), a package can move between `node_modules` folders because of a change two or more steps away, and take its dependencies with it. Two cases follow, while no `p:` node on the test's path changes:
       - a file imports a name its own workspace package does not declare, and loads another copy of it;
       - an unmet Berry peer, one the package's parent does not provide, is found by position and reaches another copy (rulings R9 and R11, which wait on Ojas's confirmation, §10).
 
       The lockfile soundness property counts both, and fails on any other miss. At the default seed it counts 4 such misses in 700 runs of Berry's `node-modules` layout, 1 in classic yarn, and none in pnpm or Plug'n'Play.
     - **Classic yarn's peers.** The lockfile does not record peers, so they are not edges. A test that reaches a package but not its peer misses a bump of the peer.
+    - **Phantom dependencies.** A package that requires a name it does not declare, and finds it by hoisting or through pnpm's `.pnpm/node_modules`, has no edge to it. npm has the same gap.
     - **The name node's precision cost on pnpm monorepos.** A file that imports a name its own workspace package does not declare depends on that name's name node, which changes whenever any copy of the name is bumped, added or removed, or a package that depends on it is bumped. So where tests import a root-declared vitest, a bump of a `@vitest/*` package reruns those tests. Reading pnpm's `node-linker` would let the isolated layout walk up to the declaring importer exactly.
     - bun lockfiles, pnpm other than 9.0, Berry other than 8 and 10, and npm v1 are unparseable, so any change to them runs everything (L3). Only root lockfiles are read.
   - Precision costs seen on hono:
@@ -614,7 +615,7 @@ These are honest limits, not bugs. Each one errs towards running more tests.
 | 34 | The cut-over: the map on disk is SMAP; the JSON reader removed; the 70-commit replay; SMAP numbers at 10,000 files |
 | 35 | The external review of SMAP v0: the section count checked before use, two clarifications in the specification, lint ignores `.claude/` and `.superpowers/` |
 | 36 | The pnpm and yarn lockfile readers: a strict YAML subset, the resolved model, three readers with no caller yet, 78 hand mutants |
-| 36 | The lockfile cut-over: one `Lockfile` interface, SMAP kinds 3 to 5, engine `trommel-static-4`, the planner on every format, the soundness property and its residuals (rulings R9 to R11), the 70-commit replay, the corpus check still to run |
+| 37 | The lockfile cut-over: one `Lockfile` interface, SMAP kinds 3 to 5, engine `trommel-static-4`, the planner on every format, the soundness property and its residuals (rulings R9 to R11), the 70-commit replay, the corpus check still to run |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 

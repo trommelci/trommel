@@ -1,7 +1,7 @@
 # pnpm and yarn lockfiles: design
 
 - **Written:** 2026-11-15, at `main` = `74ca9b4` (SMAP v0 is the map on disk; engine `trommel-static-3`).
-- **Status:** approved by Ojas on 2026-11-15, after he chose approach A of §4 and answered the three review questions of §12.
+- **Status:** approved by Ojas on 2026-11-15, after he chose approach A of §4 and answered the three review questions of §12. Amended on 2026-11-16 (`ce741d0`) for rulings R9–R11, which await Ojas's confirmation.
 - **Scope:** the first item of [HANDOFF.md](../../../HANDOFF.md) §8, "pnpm and yarn lockfile parsers", from the M1 row of [roadmap](../../roadmap.md) §1.
 - **Decided already, and not reopened here:** architecture §3.1's `p:` nodes and §3.5's row "lockfile changed but unparseable → L3", read by [DECISIONS.md](../../../DECISIONS.md) entry 23 as "only when it changes"; entry 18 for npm; entry 32's rule that a hub's hash covers what it points at; ADR-0002, zero runtime dependencies.
 - **Evidence:** §5, gathered on 2026-11-15 with Ojas's approval: the lockfile headers of the 24 corpus repositories, and five sample lockfiles in full.
@@ -140,7 +140,7 @@ Applied to lookup locations, npm's rule would mark the root's lookup of, say, ty
 From a file in directory D, for the name N, the file's own importer W is the deepest importer whose directory is D or contains D. Then:
 1. **W declares N:** the file gets an edge to the lookup location `<W>/node_modules/N`. This is exact in every layout.
 2. **W does not, but the lockfile knows N** (an importer declares it, or an entry has that name): the file gets an edge to N's name node (Ojas, 2026-11-15).
-3. **Otherwise:** the file gets an edge to `p:npm:node_modules/N` with hash ⊥, and is uncertain ("N is not in pnpm-lock.yaml"), as with npm today.
+3. **Otherwise:** the file gets an edge to `p:npm:node_modules/N` with hash ⊥, and is uncertain ("N is not in pnpm-lock.yaml"), as with npm today. A file that also resolves N to a file of the repository, through a root `__mocks__/N` or tsconfig `paths`, is not uncertain, and the edge alone carries a change. So when the lockfile later learns N, the ⊥ node's hash there becomes N's name node (or the root's lookup, if the root declares N), and the change is seen (found by the whole-branch review, DECISIONS 37).
 
 Importers are:
 - **pnpm:** the keys of `importers`, with their `dependencies`, `devDependencies` and `optionalDependencies`;
@@ -158,7 +158,7 @@ Importers are:
 
 The same move reaches an unmet Berry peer in a hoisted layout: a peer that the package's parent does not provide. Node finds it by position, so when the package moves, it can reach another copy of its peer while no input of the peer's name node changes. §9.2's property found this on Berry's `node-modules` layout: 0 to 3 times in 700 runs.
 
-Both are a known gap (ruling R9, 2026-11-16, within Ojas's decision on second-order hoisting moves), recorded in HANDOFF §11. An exact fix would make the peer depend on the whole hoisting layout, which is approach C. M2's records, which see the file a test actually loaded, close it.
+Both are a known gap (ruling R9, 2026-11-16, made within Ojas's decision on second-order hoisting moves and awaiting his confirmation), recorded in HANDOFF §11. An exact fix would make the peer depend on the whole hoisting layout, which is approach C. M2's records, which see the file a test actually loaded, close it.
 
 **What case 2 costs.** A name node changes more often than one lookup would: when any copy of N is bumped, added or removed, or a package depending on N is bumped. On pnpm monorepos whose tests import a root-declared vitest, a bump of a `@vitest/*` package then reruns those tests. That usually comes with a vitest bump anyway. §11 names the refinement that would win it back.
 
@@ -207,7 +207,7 @@ Every other key and field is read past, as long as it parses within the subset. 
 - flow mappings and flow sequences on one line, nested to a small fixed depth (`{integrity: …, tarball: …}`, `[x64]`, `{}`);
 - comments, and the document marker `---` alone on a line.
 
-**Refused:** tabs in indentation, anchors, aliases, tags, block scalars (`|`, `>`), multi-line flow collections, plain scalars that continue on the next line, complex keys (`?`), directives (`%`), duplicate keys, and indentation that is not a multiple of two.
+**Refused:** tabs in indentation, anchors, aliases, tags, block scalars (`|`, `>`), multi-line flow collections, plain scalars that continue on the next line, complex keys (`?`), directives (`%`), duplicate keys, indentation that is not a multiple of two, and block mappings nested deeper than 64 levels (DECISIONS 36), since hashing the model recurses on what a reader copies.
 
 **Output:** every scalar is a string. A mapping is a `Map`, a sequence an array. A refusal names its line. One pass, and recursion only in flow nesting, which is bounded.
 
@@ -305,7 +305,7 @@ The selector's soundness property (`select/plan.test.ts`, 2,000 runs) gains lock
   - the copy of a name the test's own workspace package does not declare changed, while that name's node did not;
   - in a hoisted Berry layout, an unmet peer that Node finds by position reached another copy, while the peer's name node did not change.
 
-  The property counts each case separately, and fails on any other miss.
+  The property counts each case separately, and a test exempt only by a mix of the two as a third, mixed case (ruling R11, which awaits Ojas's confirmation). It fails on any other miss.
 - **What the property cannot see:** the exemption reads the name-node hash from the system under test. A mutant that weakens that hash is classed as a residual, and the model's own tests (`model.test.ts`) catch it instead. Likewise, pointing a file straight at an entry is covered by the escalation of changed packages that no test reaches, and the planner's example tests catch it.
 - **Hand mutants** include:
   - dropping a dependency from an entry's hash;
