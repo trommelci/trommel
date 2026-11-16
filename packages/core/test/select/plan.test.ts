@@ -452,6 +452,51 @@ describe('pnpm and yarn lockfiles', () => {
     expect(plan(base, head).escalations).toEqual([{ level: 'L3', cause: `the lockfile changed from ${described} to none` }]);
   });
 
+  // Found by the whole-branch review (DECISIONS 37). packages/a imports foo, which the lockfile
+  // does not know at B, and a root mock resolves the import: it is certain, and goes to case 3's ⊥
+  // node p:npm:node_modules/foo (§6.4). At H, bar, which packages/b declares, depends on foo, so a
+  // hoisted install puts foo at the root. npm's shadow rule sees that; so must pnpm and yarn.
+  describe('a name left at ⊥ by case 3 that the head lockfile knows', () => {
+    const files = (lockName: string, lock: string): Files => ({
+      'package.json': '{"name":"app","workspaces":["packages/*"]}',
+      [lockName]: lock,
+      '__mocks__/foo.ts': 'export default 1;\n',
+      'packages/a/package.json': '{"name":"a"}',
+      'packages/a/index.ts': "import 'foo';\n",
+      'packages/a/a.test.ts': "import './index';\n",
+      'packages/b/package.json': JSON.stringify({ name: 'b', dependencies: { bar: '^1.0.0' } }),
+      'packages/b/index.ts': "import 'bar';\n",
+      'packages/b/b.test.ts': "import './index';\n",
+    });
+    const classic = (foo: boolean): string =>
+      foo
+        ? '# yarn lockfile v1\n\n\nbar@^1.0.0:\n  version "1.1.0"\n  resolved "https://registry.yarnpkg.com/bar/-/bar-1.1.0.tgz#x"\n  integrity sha512-bar110\n  dependencies:\n    foo "^1.0.0"\n\nfoo@^1.0.0:\n  version "1.0.0"\n  resolved "https://registry.yarnpkg.com/foo/-/foo-1.0.0.tgz#x"\n  integrity sha512-foo100\n'
+        : '# yarn lockfile v1\n\n\nbar@^1.0.0:\n  version "1.0.0"\n  resolved "https://registry.yarnpkg.com/bar/-/bar-1.0.0.tgz#x"\n  integrity sha512-bar100\n';
+    const pnpm = (foo: boolean): string => {
+      const bar = foo ? '1.1.0' : '1.0.0';
+      const importers = `lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\n  packages/a: {}\n\n  packages/b:\n    dependencies:\n      bar:\n        specifier: ^1.0.0\n        version: ${bar}\n`;
+      const packages = `\npackages:\n\n  bar@${bar}:\n    resolution: {integrity: sha512-bar${bar}}\n${foo ? '\n  foo@1.0.0:\n    resolution: {integrity: sha512-foo100}\n' : ''}`;
+      const snapshots = foo ? '\nsnapshots:\n\n  bar@1.1.0:\n    dependencies:\n      foo: 1.0.0\n\n  foo@1.0.0: {}\n' : '\nsnapshots:\n\n  bar@1.0.0: {}\n';
+      return importers + packages + snapshots;
+    };
+
+    it.each([
+      ['yarn-classic', 'yarn.lock', classic],
+      ['pnpm', 'pnpm-lock.yaml', pnpm],
+    ] as const)("selects packages/a's test (%s)", (_flavour, lockName, lock) => {
+      const base = files(lockName, lock(false));
+      const map = mapOf(fakeRepo(base));
+      expect(map.nodes['p:npm:node_modules/foo']).toBeNull();
+      expect(Object.keys(map.nodes).filter((key) => key.startsWith('u:'))).toEqual([]);
+      const selection = plan(base, files(lockName, lock(true)));
+      expect(selection.changed).toContain('p:npm:node_modules/foo');
+      expect(selection.escalations).toEqual([]);
+      expect(selection.forced).toEqual([]);
+      expect(selection.affected.map((a) => a.test)).toEqual(['packages/a/a.test.ts', 'packages/b/b.test.ts']);
+      expect(selection.wouldSkip).toEqual([]);
+    });
+  });
+
   it('inputs.ignore node_modules/eslint exempts an unreached eslint bump', () => {
     const lock = (eslint: string) =>
       `lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    devDependencies:\n      eslint:\n        specifier: ^9.0.0\n        version: ${eslint}\n\n  packages/a: {}\n\n  packages/b: {}\n\npackages:\n\n  eslint@${eslint}:\n    resolution: {integrity: sha512-eslint${eslint}}\n\nsnapshots:\n\n  eslint@${eslint}: {}\n`;
