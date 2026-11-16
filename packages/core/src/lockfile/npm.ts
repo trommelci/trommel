@@ -137,27 +137,6 @@ export function npmLockfile(parsed: NpmLockfile, path: string): Lockfile {
   };
 }
 
-/** Install locations that appeared, changed hash or disappeared between two lockfiles. */
-export function diffLockfiles(before: NpmLockfile, after: NpmLockfile): { added: string[]; changed: string[]; removed: string[] } {
-  const added: string[] = [];
-  const changed: string[] = [];
-  const removed: string[] = [];
-  for (const [location, pkg] of after.packages) {
-    const old = before.packages.get(location);
-    if (old === undefined) {
-      added.push(location);
-    } else if (old.hash !== pkg.hash) {
-      changed.push(location);
-    }
-  }
-  for (const location of before.packages.keys()) {
-    if (!after.packages.has(location)) {
-      removed.push(location);
-    }
-  }
-  return { added, changed, removed };
-}
-
 const LOCKFILES: readonly (readonly [string, Unparseable['format']])[] = [
   ['npm-shrinkwrap.json', 'npm'],
   ['package-lock.json', 'npm'],

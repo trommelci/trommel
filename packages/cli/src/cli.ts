@@ -12,6 +12,7 @@ import {
   canonicalJson,
   canonicalJsonPretty,
   decodeSmap,
+  diffLockfiles,
   encodeSmap,
   GitVfs,
   isLexed,
@@ -25,7 +26,6 @@ import {
   runAll,
   selectStatic,
   TreeIndex,
-  type Lockfile,
   type LockfileState,
   type ObjectFormat,
   type Selection,
@@ -153,9 +153,9 @@ async function diff(command: Extract<Command, { name: 'diff' }>, io: Io): Promis
   const before = readLockfile(base.vfs);
   const after = readLockfile(head.vfs);
   const packages =
-    before.kind === 'parsed' && after.kind === 'parsed' && before.lockfile.kind === 'npm' && after.lockfile.kind === 'npm'
-      ? { before: before.lockfile.path, after: after.lockfile.path, ...diffNodes(before.lockfile, after.lockfile) }
-      : { before: describe(before), after: describe(after), unknown: 'package changes are only computed between two npm lockfiles' };
+    before.kind === 'parsed' && after.kind === 'parsed' && before.lockfile.kind === after.lockfile.kind
+      ? { before: before.lockfile.path, after: after.lockfile.path, ...diffLockfiles(before.lockfile, after.lockfile) }
+      : { before: describe(before), after: describe(after), unknown: 'package changes are only computed between two lockfiles of one kind' };
   io.stdout(
     canonicalJsonPretty({
       base: { rev: command.base, rootTree: base.index.rootOid },
@@ -168,18 +168,8 @@ async function diff(command: Extract<Command, { name: 'diff' }>, io: Io): Promis
   return 0;
 }
 
-/** Install locations that appeared, changed hash or disappeared, over the non-null nodes of two npm lockfiles; the `p:npm:` prefix is dropped. */
-function diffNodes(before: Lockfile, after: Lockfile): { added: string[]; changed: string[]; removed: string[] } {
-  const installed = (lockfile: Lockfile): Map<string, string> => new Map([...lockfile.nodes].filter((entry): entry is [string, string] => entry[1] !== null).map(([key, hash]) => [key.slice('p:npm:'.length), hash]));
-  const [was, now] = [installed(before), installed(after)];
-  const added = [...now.keys()].filter((location) => !was.has(location));
-  const changed = [...now].filter(([location, hash]) => was.has(location) && was.get(location) !== hash).map(([location]) => location);
-  const removed = [...was.keys()].filter((location) => !now.has(location));
-  return { added, changed, removed };
-}
-
 function describe(lockfile: LockfileState): string {
-  return lockfile.kind === 'parsed' ? lockfile.lockfile.path : lockfile.kind === 'unparseable' ? `${lockfile.paths.join(', ')} (unparseable: ${lockfile.reason})` : 'none';
+  return lockfile.kind === 'parsed' ? `${lockfile.lockfile.kind} ${lockfile.lockfile.path}` : lockfile.kind === 'unparseable' ? `${lockfile.paths.join(', ')} (unparseable: ${lockfile.reason})` : 'none';
 }
 
 async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promise<number> {

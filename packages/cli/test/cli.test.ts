@@ -194,3 +194,50 @@ describe('trommel usage errors', () => {
     expect(run.stderr).toMatch(/trommel: /);
   });
 });
+
+describe('trommel diff over other lockfiles', () => {
+  const PNPM = (zod: string): string =>
+    `lockfileVersion: '9.0'\n\nimporters:\n\n  .:\n    dependencies:\n      zod:\n        specifier: 3.24.3\n        version: 3.24.3\n\npackages:\n\n  zod@3.24.3:\n    resolution: {integrity: ${zod}}\n\nsnapshots:\n\n  zod@3.24.3: {}\n`;
+  const inFreshRepo = (body: () => void): void => {
+    const outer = repo;
+    repo = mkdtempSync(join(tmpdir(), 'trommel-cli-diff-'));
+    try {
+      git('init', '-q');
+      body();
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      repo = outer;
+    }
+  };
+
+  it('diff between two pnpm commits lists the changed packages', () => {
+    inFreshRepo(() => {
+      const one = commit({ 'package.json': '{"name":"demo"}\n', 'pnpm-lock.yaml': PNPM('sha512-one') });
+      const two = commit({ 'pnpm-lock.yaml': PNPM('sha512-two') });
+      const run = trommel(['diff', one, two]);
+      expect(run.status).toBe(0);
+      expect((JSON.parse(run.stdout) as { packages: unknown }).packages).toEqual({
+        before: 'pnpm-lock.yaml',
+        after: 'pnpm-lock.yaml',
+        added: [],
+        changed: ['p:pnpm:zod@3.24.3'],
+        removed: [],
+      });
+    });
+  });
+
+  it('diff between lockfile kinds says so', () => {
+    inFreshRepo(() => {
+      const one = commit({ 'package.json': '{"name":"demo"}\n', 'package-lock.json': LOCK });
+      rmSync(join(repo, 'package-lock.json'));
+      const two = commit({ 'pnpm-lock.yaml': PNPM('sha512-one') });
+      const run = trommel(['diff', one, two]);
+      expect(run.status).toBe(0);
+      expect((JSON.parse(run.stdout) as { packages: unknown }).packages).toEqual({
+        before: 'npm package-lock.json',
+        after: 'pnpm pnpm-lock.yaml',
+        unknown: 'package changes are only computed between two lockfiles of one kind',
+      });
+    });
+  });
+});

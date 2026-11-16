@@ -16,3 +16,30 @@ export interface Lockfile {
   /** Spec §6.4: a lookup key, a name-node key, or null. `dir` is POSIX, '' for the root. */
   locate(name: string, dir: string): string | null;
 }
+
+/**
+ * The keys that appeared, changed hash or disappeared between two lockfiles, each list sorted. It
+ * compares `nodes` only, a ⊥ node being a hash like any other; the caller checks the kinds agree.
+ */
+export function diffLockfiles(before: Lockfile, after: Lockfile): { added: string[]; changed: string[]; removed: string[] } {
+  const added: string[] = [];
+  const changed: string[] = [];
+  const removed: string[] = [];
+  for (const [key, hash] of after.nodes) {
+    if (!before.nodes.has(key)) {
+      added.push(key);
+    } else if (before.nodes.get(key) !== hash) {
+      changed.push(key);
+    }
+  }
+  for (const key of before.nodes.keys()) {
+    if (!after.nodes.has(key)) {
+      removed.push(key);
+    }
+  }
+  return { added: added.sort(compareStrings), changed: changed.sort(compareStrings), removed: removed.sort(compareStrings) };
+}
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}

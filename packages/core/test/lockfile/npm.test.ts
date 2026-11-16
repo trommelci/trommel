@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { detectLockfile, diffLockfiles, npmLockfile, parseNpmLockfile, type NpmLockfile } from '../../src/lockfile/npm.ts';
+import { detectLockfile, npmLockfile, parseNpmLockfile, type NpmLockfile } from '../../src/lockfile/npm.ts';
 
 const V3 = JSON.stringify({
   name: 'root',
@@ -77,21 +77,6 @@ describe('NpmLockfile.dependencies', () => {
     const lock = parse(V3);
     expect(lock.dependencies('node_modules/a')).toEqual({ resolved: ['node_modules/a/node_modules/b', 'node_modules/shared'], missing: ['react'] });
     expect(lock.dependencies('node_modules/lodash')).toEqual({ resolved: [], missing: [] });
-  });
-});
-
-describe('diffLockfiles', () => {
-  it('lists the install locations that changed, appeared or disappeared', () => {
-    const before = parse(V3);
-    const changed = JSON.parse(V3) as { packages: Record<string, Record<string, unknown>> };
-    changed.packages['node_modules/lodash']!['integrity'] = 'sha512-NEW';
-    delete changed.packages['node_modules/shared'];
-    changed.packages['node_modules/zod'] = { version: '4.0.0', integrity: 'sha512-ZZZ' };
-    expect(diffLockfiles(before, parse(JSON.stringify(changed)))).toEqual({
-      added: ['node_modules/zod'],
-      changed: ['node_modules/lodash'],
-      removed: ['node_modules/shared'],
-    });
   });
 });
 
