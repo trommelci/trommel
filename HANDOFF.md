@@ -589,6 +589,7 @@ These are honest limits, not bugs. Each one errs towards running more tests.
 | 32 | Resolution hubs `r:` and `c:`, engine `trommel-static-3`; the package-root lookup recorded (review L3) |
 | 33 | The SMAP v0 codec: container, snapshot layer and static layer; which hashes are stored; unpaired surrogates; the engine id stays |
 | 34 | The cut-over: the map on disk is SMAP; the JSON reader removed; the 70-commit replay; SMAP numbers at 10,000 files |
+| 35 | The external review of SMAP v0: the section count checked before use, two clarifications in the specification, lint ignores `.claude/` and `.superpowers/` |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 
