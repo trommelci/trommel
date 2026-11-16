@@ -36,7 +36,7 @@ export const MAP_VERSION = 1;
  * What builds the graph and how a plan reads it; a map built by another engine is invalid (L3).
  * `trommel-static-2` has no `e:` nodes: a plan no longer compares the environment (DECISIONS 28).
  * `trommel-static-3` has resolution hubs, whose hashes a plan recomputes (DECISIONS 32).
- * `trommel-static-4` reads pnpm and yarn lockfiles, whose maps have new `p:` nodes (DECISIONS 36).
+ * `trommel-static-4` reads pnpm and yarn lockfiles, whose maps have new `p:` nodes (DECISIONS 37).
  */
 export const ENGINE = 'trommel-static-4';
 

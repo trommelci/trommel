@@ -1,5 +1,5 @@
 // Test helper for the lockfile soundness property (spec 2026-11-15-pnpm-yarn-lockfiles §9.2,
-// DECISIONS 36): a random package universe and workspace, installed in one of four layouts, written
+// DECISIONS 37): a random package universe and workspace, installed in one of four layouts, written
 // out as the repository files the builder reads, and an oracle that walks the placed install.
 //
 // - The universe is the names a to e at 1.0.0 and 2.0.0. Each version depends on up to two

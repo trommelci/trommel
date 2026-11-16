@@ -1,4 +1,4 @@
-// The lockfile soundness property (spec 2026-11-15-pnpm-yarn-lockfiles §9.2, DECISIONS 36). A random
+// The lockfile soundness property (spec 2026-11-15-pnpm-yarn-lockfiles §9.2, DECISIONS 37). A random
 // install in each layout is written out at S and, after one or two edits, at H; the plan from S's
 // map must select every test whose loaded packages differ, as an oracle that walks the placed
 // install finds them (./install-tree.ts). That oracle never reads a lockfile and never calls

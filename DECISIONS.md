@@ -823,7 +823,19 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - On this repository the map is 48,609 bytes against 149,855.
   - **Not yet seen in CI:** `trommel.yml` with the SMAP map. Its first run on this change should show the run-all fallback with "no map at .trommel/map/map.smap", and the first push to `main` after the merge should cache a `map.smap`. Check both, as §7 of the hand-off did for day 10.
 
-## 35. pnpm and yarn lockfile readers (2026-11-15)
+## 35. An external review of SMAP v0 (2026-11-15)
+
+- **Context.** After entries 33 and 34, Ojas had SMAP v0 reviewed by Gemini in Antigravity, read-only, on `main` at `74ca9b4`. It confirmed that the tests pass, that the golden hashes hold, and test vector 1 ([docs/smap-format.md](docs/smap-format.md) §6.1) byte by byte by hand. It reported four findings. All four are fixed here, and none changes a byte of the format or anything a user would notice.
+- **Decision.**
+  - **1. The section count was not checked before use.** `decodeContainer` read the count and built the table from it at once, while §5 of the specification says every count is checked against the bytes left before anything is sized by it. The reviewer rated this Important. It is graded Minor here: the count is a u16, so at most 65,535 entries are ever made, and a file too short for them already failed with "ends early". It is a matter of conformance, not of safety. The decoder now refuses a count whose 16-byte entries the bytes left cannot hold: "it lists 65535 sections, more than the file can hold".
+  - **2. The specification did not say that an edge list is never empty.** `encodeSmap` refuses a map that gives a node an empty edge list, because a decoded map never has one. §4.3 now says so: a node with no outgoing edge has degree 0 and no entry in the map's edge table.
+  - **3. The specification did not say why `format` is 0 and the map's `version` is 1.** §2 now says that `format` numbers the file format, and that `version` (`MAP_VERSION`) numbers the in-memory model and its canonical JSON and is not stored in the file. This is as intended (entry 34).
+  - **4. `npm run lint` scanned `.claude/` and `.superpowers/`.** ESLint does not read git's excludes, so in the main checkout it linted other sessions' worktrees under `.claude/worktrees/`, with over a thousand errors, and scratch files under `.superpowers/`. Both are now in `ignores` in `eslint.config.js`, in a commit of its own since it is outside SMAP.
+- **Evidence.**
+  - **Tests.** Still 712 in 36 files: the row "a section count the file cannot hold" in `container.test.ts` now expects the new message. It failed before the check was added, and again with the check removed by hand. Lint, typecheck and the zero-dependency check are clean.
+  - **The format did not move.** No golden hash in `test/smap/golden.test.ts` or `test/graph/golden.test.ts` changed, and vector 1 is still 460 bytes.
+
+## 36. pnpm and yarn lockfile readers (2026-11-15)
 
 - **Context.** Until now a pnpm or yarn lockfile was `unparseable`, so any change to one escalated to L3 and ran every test. The design ([docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md](docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md)) reads all three formats into one resolved model, so that a bump of one package selects only the tests that reach it. This is the first of its two pull requests: the readers, with no caller. The cut-over to the builder and the planner is the second, and the engine stays `trommel-static-3` until then.
 - **Decision.**
@@ -856,14 +868,14 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - The soundness mutants of the model are the three that matter: an entry hash that drops its dependencies, a name-node hash that drops its dependents, and a `locate` that walks up to an ancestor importer.
   - **Not done here:** nothing calls the readers, so no plan changes. Corpus lockfiles (spec 9.4) and the replay of this repository's commits are the cut-over's evidence.
 
-## 36. pnpm and yarn lockfiles are parsed: the cut-over (2026-11-16)
+## 37. pnpm and yarn lockfiles are parsed: the cut-over (2026-11-16)
 
 - **Context.** Entry 35 built the three readers with no caller. This is the second pull request of the design ([docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md](docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md) §10): one lockfile interface for the builder, the planner and `trommel diff`, SMAP's new lockfile kinds, and the engine `trommel-static-4`. Until now any change to a pnpm or yarn lockfile ran every test (L3). It finishes the first item of [HANDOFF.md](HANDOFF.md) §8, except the corpus check, which waits on Ojas (below).
 - **Decision.**
   - **One interface for every lockfile** (spec §8.1). The builder, the planner and `trommel diff` ask a `Lockfile` for its `nodes`, a node's `hash` and `dependencies`, and where a bare import goes (`locate`). They no longer ask which format they have. A lockfile state is `parsed`, `unparseable` or `none`.
     - npm is adapted with no change to its nodes or edges (`npmLockfile`). That includes the ⊥ nodes of names a package declares and npm did not install.
   - **Detection.** `detectLockfile` now reports `pnpm-lock.yaml` and `yarn.lock` as lockfiles to read. A `yarn.lock` whose text holds `# yarn lockfile v1` is classic; any other is Berry.
-    - What a reader refuses (entry 35) is `unparseable` as before, so a change to it is still L3. That covers pnpm before 9.0 and Berry before 8. bun stays unparseable, now with the reason "bun lockfiles are not parsed", and so does more than one lockfile.
+    - What a reader refuses (entry 36) is `unparseable` as before, so a change to it is still L3. That covers pnpm before 9.0 and Berry before 8. bun stays unparseable, now with the reason "bun lockfiles are not parsed", and so does more than one lockfile.
   - **Classic yarn's workspace** is read from the snapshot:
     - The importers are the root and the members `Resolver.workspaces()` finds. Each declares the names in the `dependencies`, `devDependencies` and `optionalDependencies` of its own `package.json`. When two fields name one package, the later field wins.
     - A member whose `package.json` cannot be read, or has a dependency field that is not an object, makes the lockfile unparseable: "<dir>/package.json cannot be read".
@@ -906,9 +918,9 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
   - **Superseded in earlier entries:**
     - entry 18's "pnpm, yarn … are reported as `unparseable`", and its diff of install locations;
     - entry 24's "lockfiles that cannot be parsed (pnpm, yarn, bun, npm v1)", which now means bun, npm v1, and pnpm and yarn formats the readers do not know;
-    - entry 35's "no caller".
+    - entry 36's "no caller".
 - **Evidence.**
-  - **Tests.** 937 pass in 44 files, where entry 35 had 890 in 42. Lint, typecheck and the zero-dependency check are clean.
+  - **Tests.** 937 pass in 44 files, where entry 36 had 890 in 42. Lint, typecheck and the zero-dependency check are clean.
     - `plan.test.ts` plans a lockfile-only bump in one workspace package for pnpm, Berry and classic yarn, and it selects that package's tests and not the other's. It also covers a transitive bump, a new copy of a root-declared name, `#env`, a change of yarn flavour, a deleted pnpm or yarn lockfile and an ignored eslint bump.
     - `static.test.ts` maps each format, the classic workspace and its refusals; `smap.test.ts` pins each kind's `META` bytes and round-trips each kind; `lockfile.test.ts` and `cli.test.ts` cover the diff.
   - **The soundness property** passes its 2,800 runs at the default seed, in 6.7 s on the day of the benchmark below. The review, before its fix round, counted 1,905 of the 2,800 runs with no L1 escalation; a run with one proves nothing.
@@ -934,7 +946,7 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - **2 in `trommel diff`:** the one-kind check dropped, and a ⊥ hash treated as absent.
   - **This repository's last 70 non-merge commits,** `29f1638` to `3686470`, each planned from a map of its parent by the CLI on `main` at `74ca9b4` and by this one (spec §9.3). On all 70 the tests that would run, the would-skips, the why-path of each affected test and the escalations are identical. Escalations were compared by level, scope and cause, with the kind that R7 adds removed, and no cause needed it. In all: 728 of 2,337 possible test-file runs, 11 commits with an L1 escalation, 1 with an L3 (`trommel.config.json` changed, at `e808651`) and no fallback.
     - Each of the 70 maps differs from `main`'s only in the last character of the engine id and in the trailer: 3,350,720 bytes for the 70, on both sides.
-  - **The synthetic 10,000-file repository and this one,** measured the same day and on the same machine with `main`'s benchmark and with this one, twice each ([bench/README.md](bench/README.md)). The numbers match within noise. `main`'s own two runs differ by 0.05 s in decoding and 0.21 s in `buildStaticMap`, more than the two builds differ there. For the cold CLI and the select steps, two runs of one build differ by about as much as the two builds do.
+  - **The synthetic 10,000-file repository and this one,** measured the same day and on the same machine with `main`'s benchmark and with this one, twice each ([bench/README.md](bench/README.md)). The numbers match within noise. `main`'s own two runs differ by 0.04 s in decoding and 0.21 s in `buildStaticMap`, more than the two builds differ there. For the cold CLI and the select steps, two runs of one build differ by about as much as the two builds do.
 
     | | Map | CLI cold | `buildStaticMap` | Decode | Select, an edit | Select, a file added |
     |---|---|---|---|---|---|---|

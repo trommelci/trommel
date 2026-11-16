@@ -75,6 +75,7 @@ trailer     32 bytes  SHA-256 of every byte before it
 - **Layers** ascend through the table, so the sections of one layer are adjacent.
 - **An unknown section** is skipped when it is optional and makes the file invalid when it is required. The same holds for a known tag at a version the reader does not know.
 - **Limits.** A file is under 4 GiB, and has at most 65,535 sections.
+- **`format` is the file format's number, 0 here.** It is not the map's `version` (`MAP_VERSION`, 1), which numbers the in-memory model and its canonical JSON and is not stored in the file.
 
 A reader checks the magic first, then the format, then the trailer, then everything else. So a file that is not SMAP, or is a later format, is reported as that and not as a damaged trailer.
 
@@ -158,6 +159,8 @@ provenance  E bytes            one per edge, in the same order
 ```
 
 A provenance byte is a bitmask: bit 0 static, bit 1 dynamic, bit 2 declared. It is 1 to 7. Two edges between the same nodes are one edge whose byte is the OR of both.
+
+A node with no outgoing edge has degree 0 here and no entry in the map's edge table, so a decoded map never holds an empty edge list. A writer refuses a map that gives a node one.
 
 ### 4.4 `HASH`
 

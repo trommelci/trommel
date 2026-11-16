@@ -351,8 +351,8 @@ Under DECISIONS 29, which stands (Ojas, 2026-11-15), a bump of a package no test
 
 Two pull requests, as SMAP did:
 
-1. **`m1/lockfile-readers`:** the YAML subset and the pnpm, Berry and classic readers, with §9.1's tests and the benchmark. They have no caller, so no plan changes and the engine stays `trommel-static-3`. DECISIONS 35 records it.
-2. **`m1/lockfile-cutover`:** the interface, builder, planner, SMAP kinds, CLI and engine `trommel-static-4`, with §9.2 to §9.4. In the same pull request, the documents that follow the decision: DECISIONS 36, architecture §3.1 (the `p:` kinds) and §3.5 (as built), [docs/smap-format.md](../../smap-format.md), HANDOFF §1, §4, §8, §11 and §13, the roadmap's progress line, bench/README.md, and §5's survey in bench/CORPUS.md.
+1. **`m1/lockfile-readers`:** the YAML subset and the pnpm, Berry and classic readers, with §9.1's tests and the benchmark. They have no caller, so no plan changes and the engine stays `trommel-static-3`. DECISIONS 36 records it.
+2. **`m1/lockfile-cutover`:** the interface, builder, planner, SMAP kinds, CLI and engine `trommel-static-4`, with §9.2 to §9.4. In the same pull request, the documents that follow the decision: DECISIONS 37, architecture §3.1 (the `p:` kinds) and §3.5 (as built), [docs/smap-format.md](../../smap-format.md), HANDOFF §1, §4, §8, §11 and §13, the roadmap's progress line, bench/README.md, and §5's survey in bench/CORPUS.md.
 
 ## 11. Left to the builder
 
