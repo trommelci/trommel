@@ -123,12 +123,13 @@ const editArb: fc.Arbitrary<Edit> = fc.record({ kind: fc.constantFrom(...EDITS),
  * S and H: H is S after one or two edits, both placed in `layout`. A pair that `hoist` cannot
  * install is skipped, and never reaches the property:
  * - a dependency cycle through two versions of one name, which nests without end in any hoisted layout;
- * - two packages that are each other's provided peer, under one parent (ruling R10). Yarn guarantees
- *   that a peer the parent provides is the parent's copy, and spec §6.7 relies on that, so `hoist`
- *   places the provided peer first and the package where it sees that copy. A mutual pair has no
- *   first, and placing it any other way would write an install Yarn never writes. About 3% of
- *   berry-node-modules pairs are skipped for it, and none in the other layouts: classic yarn has no
- *   peers here, and pnpm and Plug'n'Play are not hoisted.
+ * - packages under one parent that provide each other's peers in a cycle, of any length (ruling R10).
+ *   Yarn guarantees that a peer the parent provides is the parent's copy, and spec §6.7 relies on
+ *   that, so `hoist` places the provided peer first and the package where it sees that copy. A
+ *   cycle has no first, and placing it any other way would write an install Yarn never writes. Only
+ *   berry-node-modules pairs are skipped for it: classic yarn has no peers here, and pnpm and
+ *   Plug'n'Play are not hoisted. It was about 3% of them, measured before fix round 1 changed how a
+ *   peer is provided, and has not been measured since.
  */
 export function installPairArb(layout: Layout): fc.Arbitrary<{ readonly s: Install; readonly h: Install }> {
   return fc
@@ -324,8 +325,8 @@ const MAX_DEPTH = 8;
  * Node finds whatever is there.
  *
  * null when the layout cannot hold the install: a cycle through two versions of one name (a@1 →
- * b@1 → a@2 → b@2 → a@1) nests past MAX_DEPTH node_modules, or two packages are each other's
- * provided peer, so neither can be placed first.
+ * b@1 → a@2 → b@2 → a@1) nests past MAX_DEPTH node_modules, or a parent's packages provide each
+ * other's peers in a cycle, so none of them can be placed first.
  */
 function hoist(spec: Spec): { copies: Map<string, string>; links: Map<string, string> } | null {
   const copies = new Map<string, string>();
