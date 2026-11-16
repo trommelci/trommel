@@ -538,7 +538,7 @@ Every escalation appears in the plan summary with its cause. L0 is file-precise.
   - A plan recomputes every `p:` node of the map from the head lockfile and compares hashes; it has no rule per format beyond npm's shadow rule. A changed package node that no test reaches escalates its owning package (L1), like any other unreached node, and for an entry, a name node or a root lookup that is the root. So does a change to pnpm's own document, `p:pnpm:#env`.
   - A change of the lockfile's kind or path between the map and the head is L3: from Berry to classic yarn, from yarn to pnpm, a deleted lockfile, or one that was unparseable and now parses.
   - `inputs.ignore` matches a lockfile entry or a name node as `node_modules/<name>`, the pattern that matches its lookup at the root, and `p:pnpm:#env` as `pnpm-lock.yaml`.
-  - **Known gaps,** recorded in [HANDOFF.md](../HANDOFF.md) §11: a second-order hoisting move can change which copy a file loads, through a name its own workspace package does not declare or through an unmet Berry peer, while no `p:` node changes; and classic yarn records no peers. Every would-skip in M1 is unproven, and M2's records close both.
+  - **Known gaps,** recorded in [HANDOFF.md](../HANDOFF.md) §11: a second-order hoisting move can change which copy a file loads, through a name its own workspace package does not declare or through an unmet Berry peer, while no `p:` node on the test's path changes; and classic yarn records no peers. The unmet-peer case is a ruling that awaits Ojas's confirmation. Every would-skip in M1 is unproven, and M2's records close both.
 
 ### 3.6 Flake ledger and quarantine
 - **Identical inputs (equivalence class).**

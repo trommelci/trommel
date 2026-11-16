@@ -70,8 +70,8 @@ Without an argument, the script builds a synthetic npm-workspaces monorepo with 
 | 2026-11-14 | Trommel at `65a5958`, with hubs | 238 | — | 514 | 1,044 | 0.14 MB | 0.37 s | 0.07 s | — |
 | 2026-11-15 | synthetic, map as SMAP | 10,023 | 42.1 | 20,107 | 145,041 | **1.11 MB** (7.07 MB as JSON) | 1.8 s | 1.2 s | decode 0.05 s + select 0.04 s; select 0.18 s when a file is added |
 | 2026-11-15 | Trommel at `c79d5a0`, map as SMAP | 258 | 0.6 | 531 | 1,155 | 0.05 MB (0.15 MB as JSON) | 0.36 s | 0.07 s | — |
-| 2026-11-16 | synthetic, `main` at `74ca9b4` (engine `trommel-static-3`) | 10,023 | 42.1 | 20,107 | 145,041 | 1.11 MB | 2.5 s | 2.9 s | decode 0.14 s + select 0.08 s; select 0.42 s when a file is added |
-| 2026-11-16 | synthetic, lockfile cut-over (`trommel-static-4`) | 10,023 | 42.1 | 20,107 | 145,041 | 1.11 MB | 2.6 s | 2.9 s | decode 0.14 s + select 0.06 s; select 0.45 s when a file is added |
+| 2026-11-16 | synthetic, `main` at `74ca9b4` (engine `trommel-static-3`) | 10,023 | 42.1 | 20,107 | 145,041 | 1.11 MB | 2.52 s | 2.9 s | decode 0.14 s + select 0.08 s; select 0.42 s when a file is added |
+| 2026-11-16 | synthetic, lockfile cut-over (`trommel-static-4`) | 10,023 | 42.1 | 20,107 | 145,041 | 1.11 MB | 2.55 s | 2.9 s | decode 0.14 s + select 0.06 s; select 0.45 s when a file is added |
 | 2026-11-16 | Trommel at `3686470`, built by `main` at `74ca9b4` | 284 | 0.8 | 552 | 1,286 | 0.05 MB (0.16 MB as JSON) | 0.53 s | 0.11 s | — |
 | 2026-11-16 | Trommel at `3686470`, lockfile cut-over | 284 | 0.8 | 552 | 1,286 | 0.05 MB (0.16 MB as JSON) | 0.55 s | 0.10 s | — |
 
@@ -85,7 +85,9 @@ All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in 
   - **Encoding costs about as much as JSON did:** 0.09 s for `encodeSmap`, where canonical JSON took 0.05 to 0.08 s. The cold CLI is unchanged at 1.8 s.
   - A second run of the script gave the same numbers within 10 ms.
 - **The lockfile cut-over** (DECISIONS 36) changes nothing here, as it should: the synthetic repository and this one use npm, whose nodes and edges are unchanged. Both builds give the same node and edge counts and the same map size, and each map differs from `main`'s only by the engine id.
-  - Each side ran twice, alternating. Two runs of one build differ by more than the two builds do: the cold CLI took 2.52 and 2.54 s on `main` and 2.55 and 2.53 s with the cut-over, decoding took 0.10 to 0.14 s on each side, and selecting against a head that adds a file 0.35 to 0.45 s. The table gives the first run of each.
+  - Each side ran twice, alternating. The table gives the first run of each.
+    - **Cold CLI and selection:** two runs of one build differ by about as much as the two builds do. The cold CLI took 2.52 and 2.54 s on `main` and 2.55 and 2.53 s with the cut-over. Selecting against a head that adds a file took 0.42 and 0.35 s on `main` and 0.45 and 0.37 s with the cut-over.
+    - **Decoding and `buildStaticMap`:** `main`'s own two runs differ by more than the two builds do. Decoding took 0.14 and 0.10 s on `main` and 0.14 and 0.13 s with the cut-over. `buildStaticMap` took 2.91 and 3.12 s on `main` and 2.87 and 2.92 s with the cut-over.
   - **The machine was slower that day than on 2026-11-15**, for both builds alike: the cold CLI took 2.5 s where it took 1.8 s, and `buildStaticMap` 2.9 s where it took 1.2 s. Compare the 2026-11-16 rows only with each other.
 
 ## Lockfile readers: `node bench/lockfile.ts <file> …`

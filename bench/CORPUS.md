@@ -86,7 +86,7 @@ The lockfile header of each of the 24 pnpm and yarn repositories above, at its h
 | classic v1 | excalidraw, immer | excalidraw, immer, docusaurus | yes |
 | other | none | lexical: npm v2; hono: `bun.lock`; date-fns: no lockfile found | npm v2 yes; bun no |
 
-- **Every lockfile at head is read.** Formats that are not read stay unparseable, so a change to one runs every test (L3).
+- **Every lockfile format at head is read.** Of these lockfiles, only the five samples of the design were parsed (DECISIONS 35). Formats that are not read stay unparseable, so a change to one runs every test (L3).
 - **Five repositories changed lockfile kind within the year.** A replay that crosses such a change runs everything once, because a change of the lockfile's kind or path is L3.
 - **The corpus check is still to run.** The design's §9.4 plans every lockfile-only commit of the last 12 months on hono and excalidraw, and it needs Ojas's approval to clone them (DECISIONS 36).
 
