@@ -227,6 +227,11 @@ function applyEdit(spec: Spec, edit: Edit): Spec {
   return spec;
 }
 
+/** A hand-written universe, importers and tests, placed in `layout` as the generator places them: for example tests. */
+export function installOf(layout: Layout, spec: Pick<Install, 'universe' | 'importers' | 'tests'>): Install | null {
+  return place(spec, layout);
+}
+
 /** The install of `spec` in `layout`, or null when a hoisted layout cannot hold it. */
 function place(spec: Spec, layout: Layout): Install | null {
   const used = usedIds(spec);
@@ -253,6 +258,46 @@ function isolate(spec: Spec, used: readonly string[]): { copies: Map<string, str
   return { copies, links };
 }
 
+/** A peer as provided: its name and the id it resolves to. */
+interface Peer {
+  readonly name: string;
+  readonly id: string;
+  /** How the parent provides it, in the order Yarn tries (berry Project.ts, resolving virtual packages). */
+  readonly via: 'dependency' | 'parent' | 'forwarded';
+}
+
+/** What a parent offers the peers of the packages it loads: an importer's declarations, or a package. */
+interface Parent {
+  /** An importer's declarations, or a package's dependencies. */
+  readonly dependencies: ReadonlyMap<string, string>;
+  /** The package itself, or null for an importer. */
+  readonly self: string | null;
+  /** The peer the package was itself provided, which it forwards; null if none or unmet. */
+  readonly provided: Peer | null;
+}
+
+const importerParent = (declared: ReadonlyMap<string, string>): Parent => ({ dependencies: declared, self: null, provided: null });
+
+/**
+ * The peer of `id` that `parent` provides, as Yarn Berry resolves a peer request: a dependency of the
+ * parent of that name, else the parent itself when the peer names it, else a peer the parent was
+ * itself provided under that name, which Yarn forwards. Null for an unmet peer, and for no peer.
+ */
+function provision(universe: ReadonlyMap<string, Version>, parent: Parent, id: string): Peer | null {
+  const name = universe.get(id)!.peer;
+  if (name === null) {
+    return null;
+  }
+  const version = parent.dependencies.get(name);
+  if (version !== undefined) {
+    return { name, id: idOf(name, version), via: 'dependency' };
+  }
+  if (parent.self !== null && nameOfId(parent.self) === name) {
+    return { name, id: parent.self, via: 'parent' };
+  }
+  return parent.provided !== null && parent.provided.name === name ? { ...parent.provided, via: 'forwarded' } : null;
+}
+
 /** How deep `hoist` nests node_modules before it gives up. */
 const MAX_DEPTH = 8;
 
@@ -269,9 +314,14 @@ const MAX_DEPTH = 8;
  * the function checks that before it returns.
  *
  * Peers are placed as Yarn's node-modules linker places them (spec §6.7). A package whose parent
- * provides its peer goes only where Node finds the parent's copy of that peer from it, and a copy
- * whose peer resolves otherwise is not reused for that parent. The parent places that peer first. An
- * unmet peer, one the parent does not provide, constrains nothing: Node finds whatever is there.
+ * provides its peer (`provision`: a dependency of the parent, the parent itself, or a peer the parent
+ * was provided and forwards) goes only where Node finds that copy from it, and a copy whose peer
+ * resolves otherwise is not reused for that parent. A dependency the parent provides as a peer is
+ * placed first; the parent itself and its own peer are placed already. A copy nested in the parent's
+ * own node_modules sees what the parent sees, so it always fits. A copy that will forward its peer
+ * to a dependency pins what it sees when its dependencies are placed, and is then not reused for a
+ * parent that provides another. An unmet peer, one the parent does not provide, constrains nothing:
+ * Node finds whatever is there.
  *
  * null when the layout cannot hold the install: a cycle through two versions of one name (a@1 →
  * b@1 → a@2 → b@2 → a@1) nests past MAX_DEPTH node_modules, or two packages are each other's
@@ -291,23 +341,30 @@ function hoist(spec: Spec): { copies: Map<string, string>; links: Map<string, st
     }
     return null;
   };
-  /** The peer that `parent` provides to its dependency `id`, as the id it must resolve to. */
-  const providedPeer = (parent: ReadonlyMap<string, string>, id: string): { readonly name: string; readonly id: string } | null => {
-    const peer = spec.universe.get(id)!.peer;
-    const version = peer === null ? undefined : parent.get(peer);
-    return peer === null || version === undefined ? null : { name: peer, id: idOf(peer, version) };
+  /** The peer each copy was provided, which it forwards to its dependencies. */
+  const provisions = new Map<string, Peer>();
+  /** Copies whose dependencies are placed. */
+  const placed = new Set<string>();
+  const parentAt = (location: string): Parent => ({ dependencies: spec.universe.get(copies.get(location)!)!.dependencies, self: copies.get(location)!, provided: provisions.get(location) ?? null });
+  /** Whether the copy at `location` has a dependency whose peer it would forward: its own peer's name. */
+  const forwards = (location: string): boolean => {
+    const version = spec.universe.get(copies.get(location)!)!;
+    return version.peer !== null && [...version.dependencies].some(([name, dependency]) => spec.universe.get(idOf(name, dependency))!.peer === version.peer);
   };
   /** Whether a copy of `id` at `slot` sees its provided peer there. */
-  const seesPeer = (slot: string, peer: { readonly name: string; readonly id: string } | null): boolean => peer === null || resolves(slot, peer.name) === peer.id;
+  const seesPeer = (slot: string, peer: Peer | null): boolean => peer === null || resolves(slot, peer.name) === peer.id;
+  /** Whether an existing copy at `slot` can serve a parent that provides `peer`. */
+  const serves = (slot: string, peer: Peer | null): boolean =>
+    seesPeer(slot, peer) && (peer === null || provisions.get(slot)?.id === peer.id || (!provisions.has(slot) && !(placed.has(slot) && forwards(slot))));
   /** Whether a new copy of `id` at `slot` keeps every required resolution and sees its provided peer. */
-  const fits = (slot: string, name: string, id: string, peer: { readonly name: string; readonly id: string } | null): boolean => {
+  const fits = (slot: string, name: string, id: string, peer: Peer | null): boolean => {
     copies.set(slot, id);
     const ok = required.every((r) => r.name !== name || resolves(r.from, name) === r.id) && seesPeer(slot, peer);
     copies.delete(slot);
     return ok;
   };
-  /** A parent's names in placing order: a provided peer before the package that needs it. */
-  const ordered = (parent: ReadonlyMap<string, string>): string[] | null => {
+  /** A parent's names in placing order: a dependency it provides as a peer before the package that needs it. */
+  const ordered = (parent: Parent): string[] | null => {
     const out: string[] = [];
     const visiting = new Set<string>();
     const visit = (name: string): boolean => {
@@ -318,14 +375,23 @@ function hoist(spec: Spec): { copies: Map<string, string>; links: Map<string, st
         return false;
       }
       visiting.add(name);
-      const peer = providedPeer(parent, idOf(name, parent.get(name)!));
-      if (peer !== null && !visit(peer.name)) {
+      const peer = provision(spec.universe, parent, idOf(name, parent.dependencies.get(name)!));
+      if (peer?.via === 'dependency' && !visit(peer.name)) {
         return false;
       }
       out.push(name);
       return true;
     };
-    return [...parent.keys()].sort(compareStrings).every(visit) ? out : null;
+    return [...parent.dependencies.keys()].sort(compareStrings).every(visit) ? out : null;
+  };
+  /** Records what a copy at `at` must keep seeing as its peer, and what it forwards. */
+  const pin = (at: string, peer: Peer | null): void => {
+    if (peer !== null) {
+      required.push({ from: at, name: peer.name, id: peer.id });
+      if (!provisions.has(at)) {
+        provisions.set(at, peer);
+      }
+    }
   };
   const put = (location: string, id: string): boolean => {
     copies.set(location, id);
@@ -335,17 +401,18 @@ function hoist(spec: Spec): { copies: Map<string, string>; links: Map<string, st
 
   for (const dir of IMPORTERS) {
     const declared = spec.importers.get(dir)!;
-    const names = ordered(declared);
+    const parent = importerParent(declared);
+    const names = ordered(parent);
     if (names === null) {
       return null;
     }
     for (const name of names) {
       const id = idOf(name, declared.get(name)!);
-      const peer = providedPeer(declared, id);
+      const peer = provision(spec.universe, parent, id);
       const root = `node_modules/${name}`;
       const held = copies.get(root);
       let at = root;
-      if (held === undefined ? !fits(root, name, id, peer) : held !== id || !seesPeer(root, peer)) {
+      if (held === undefined ? !fits(root, name, id, peer) : held !== id || !serves(root, peer)) {
         at = `${modulesOf(dir)}/${name}`;
         if (dir === '' || !fits(at, name, id, peer)) {
           throw new Error(`hoist: no slot for ${id} declared by ${dir || '.'}`);
@@ -355,22 +422,27 @@ function hoist(spec: Spec): { copies: Map<string, string>; links: Map<string, st
         put(at, id);
       }
       required.push({ from: dir, name, id });
-      if (peer !== null) {
-        required.push({ from: at, name: peer.name, id: peer.id });
-      }
+      pin(at, peer);
     }
   }
 
   // Breadth first: an array's iterator also visits what is pushed while it runs.
   for (const location of queue) {
-    const dependencies = spec.universe.get(copies.get(location)!)!.dependencies;
-    const names = ordered(dependencies);
+    // A copy that forwards its peer keeps seeing what it sees now, so that its dependencies can too.
+    const own = spec.universe.get(copies.get(location)!)!.peer;
+    const sees = own === null ? null : resolves(location, own);
+    if (own !== null && sees !== null && !provisions.has(location) && forwards(location)) {
+      pin(location, { name: own, id: sees, via: 'dependency' });
+    }
+    placed.add(location);
+    const parent = parentAt(location);
+    const names = ordered(parent);
     if (names === null) {
       return null;
     }
     for (const name of names) {
-      const id = idOf(name, dependencies.get(name)!);
-      const peer = providedPeer(dependencies, id);
+      const id = idOf(name, parent.dependencies.get(name)!);
+      const peer = provision(spec.universe, parent, id);
       let best: string | null = null;
       let reused: string | null = null;
       for (const modules of searchPath(location)) {
@@ -381,7 +453,7 @@ function hoist(spec: Spec): { copies: Map<string, string>; links: Map<string, st
         }
         const slot = `${modules}/${name}`;
         const held = copies.get(slot);
-        if (held === id && seesPeer(slot, peer)) {
+        if (held === id && serves(slot, peer)) {
           reused = slot;
           break;
         }
@@ -398,9 +470,7 @@ function hoist(spec: Spec): { copies: Map<string, string>; links: Map<string, st
         return null;
       }
       required.push({ from: location, name, id });
-      if (peer !== null) {
-        required.push({ from: at, name: peer.name, id: peer.id });
-      }
+      pin(at, peer);
     }
   }
 
@@ -495,14 +565,14 @@ function walk(install: Install, layout: Layout, test: string, exempt: Exempt): r
       if (version === undefined) {
         items.add(`missing ${name}`);
       } else {
-        visitPnp(install, idOf(name, version), declared, items, new Set());
+        visitPnp(install, idOf(name, version), importerParent(declared), items, new Set());
       }
     } else {
       const location = find(install, dirOf(test), name);
       if (location === null) {
         items.add(`missing ${name}`);
       } else {
-        visitNode(install, location, declared, items, new Set(), unmet);
+        visitNode(install, location, importerParent(declared), items, new Set(), unmet);
       }
     }
   }
@@ -511,21 +581,23 @@ function walk(install: Install, layout: Layout, test: string, exempt: Exempt): r
 
 /**
  * A package directory, then each name it requires (its dependencies and its peer), found from there.
- * `parent` is what its parent provides: the test's importer's declarations, or the dependencies of
- * the package that required it. A peer's copy has the same parent as the package whose peer it is.
- * A peer named in `unmet` that the parent does not provide is not followed.
+ * `parent` is what loaded it: the test's importer, or the package that required it. A peer's copy has
+ * the same parent as the package whose peer it is. A peer named in `unmet` that the parent does not
+ * provide (`provision`) is not followed.
  */
-function visitNode(install: Install, location: string, parent: ReadonlyMap<string, string>, items: Set<string>, seen: Set<string>, unmet: ReadonlySet<string>): void {
+function visitNode(install: Install, location: string, parent: Parent, items: Set<string>, seen: Set<string>, unmet: ReadonlySet<string>): void {
   const id = install.copies.get(location)!;
   const version = install.universe.get(id)!;
-  const follow = version.peer !== null && (!unmet.has(version.peer) || parent.has(version.peer));
-  const key = `${location} ${follow ? 'peer' : ''}`;
+  const provided = provision(install.universe, parent, id);
+  const follow = version.peer !== null && (!unmet.has(version.peer) || provided !== null);
+  const key = `${location} ${follow ? 'peer' : ''} ${provided?.id ?? ''}`;
   if (seen.has(key)) {
     return;
   }
   seen.add(key);
   items.add(`pkg ${id} ${version.content}`);
-  const required: [string, ReadonlyMap<string, string>][] = [...version.dependencies.keys()].map((name) => [name, version.dependencies]);
+  const own: Parent = { dependencies: version.dependencies, self: id, provided };
+  const required: [string, Parent][] = [...version.dependencies.keys()].map((name) => [name, own]);
   if (follow) {
     required.push([version.peer, parent]);
   }
@@ -540,27 +612,32 @@ function visitNode(install: Install, location: string, parent: ReadonlyMap<strin
 }
 
 /**
- * Plug'n'Play: a package loads its own dependencies, and its peer is its parent's dependency of
- * that name. `provider` is the parent's dependencies (a workspace's declarations for a test).
+ * Plug'n'Play: a package loads its own dependencies, and its peer is what its parent provides
+ * (`provision`). A dependency of the parent is the parent's own instance of it, a sibling under the
+ * same parent. The parent itself, or the peer the parent was provided, is loaded already: it is an
+ * ancestor on this path, or the parent's own peer.
  */
-function visitPnp(install: Install, id: string, provider: ReadonlyMap<string, string>, items: Set<string>, seen: Set<string>): void {
+function visitPnp(install: Install, id: string, parent: Parent, items: Set<string>, seen: Set<string>): void {
   const version = install.universe.get(id)!;
-  const peer = version.peer === null ? undefined : provider.get(version.peer);
-  const key = `${id} ${peer ?? ''}`;
+  const provided = provision(install.universe, parent, id);
+  const key = `${id} ${provided?.id ?? ''}`;
   if (seen.has(key)) {
     return;
   }
   seen.add(key);
   items.add(`pkg ${id} ${version.content}`);
   if (version.peer !== null) {
-    if (peer === undefined) {
+    if (provided === null) {
       items.add(`missing ${version.peer}`);
+    } else if (provided.via === 'dependency') {
+      visitPnp(install, provided.id, parent, items, seen);
     } else {
-      visitPnp(install, idOf(version.peer, peer), provider, items, seen);
+      items.add(`pkg ${provided.id} ${install.universe.get(provided.id)!.content}`);
     }
   }
+  const own: Parent = { dependencies: version.dependencies, self: id, provided };
   for (const [name, dependency] of version.dependencies) {
-    visitPnp(install, idOf(name, dependency), version.dependencies, items, seen);
+    visitPnp(install, idOf(name, dependency), own, items, seen);
   }
 }
 

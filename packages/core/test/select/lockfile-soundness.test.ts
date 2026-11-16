@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { buildStaticMap, readLockfile, type StaticInput, type TrommelMap } from '../../src/graph/static.ts';
 import { selectStatic, type HeadState, type Selection } from '../../src/select/plan.ts';
 import { fakeRepo, type FakeRepo } from '../graph/fake-repo.ts';
-import { importerOf, installPairArb, loads, loadsWithout, TESTS, writeRepo, type Exempt, type Install, type Layout } from './install-tree.ts';
+import { importerOf, installOf, installPairArb, loads, loadsWithout, TESTS, writeRepo, type Exempt, type Install, type Layout, type Version } from './install-tree.ts';
 
 // The planner helpers of plan.test.ts.
 const isTest = (path: string) => /\.test\.[jt]s$/.test(path);
@@ -118,5 +118,31 @@ describe.each(LAYOUTS)('lockfile soundness, %s (property)', (layout) => {
     console.log(
       `lockfile soundness, ${layout}: residual misses of spec §6.4 in ${RUNS} runs: ${residuals.undeclared} by undeclared imports only, ${residuals['unmet-peer']} by unmet peers only, ${residuals.mixed} only by both`,
     );
+  });
+});
+
+// Yarn Berry provides a peer that names the package's parent with the parent itself (berry
+// Project.ts), so the generated install must keep that peer visible, and the exemption must not take
+// it for unmet. Seed 1's shape: the root declares e@1, q declares e@2, e@2 depends on a@1, and a@1's
+// peer is e. At H, q also declares a@2, which takes the root slot a, so a@1 nests under e@2.
+describe('a peer that names its parent, in the generated install', () => {
+  const version = (id: string, dependencies: Record<string, string> = {}, peer: string | null = null): [string, Version] => {
+    const [name, number] = id.split('@') as [string, string];
+    return [id, { name, version: number, content: `sha512-${name}-${number}`, dependencies: new Map(Object.entries(dependencies)), peer }];
+  };
+  const universe = new Map([
+    ...['a', 'b', 'c', 'd', 'e'].flatMap((name) => ['1.0.0', '2.0.0'].map((number) => version(`${name}@${number}`))),
+    version('a@1.0.0', {}, 'e'),
+    version('e@2.0.0', { a: '1.0.0' }),
+  ]);
+  const tests = new Map(TESTS.map((test) => [test, ['e']]));
+  const importers = (q: [string, string][]) => new Map([['', new Map([['e', '1.0.0']])], ['pkgs/p', new Map<string, string>()], ['pkgs/q', new Map(q)]]);
+  const s = { universe, tests, importers: importers([['e', '2.0.0']]) };
+  const h = { universe, tests, importers: importers([['a', '2.0.0'], ['e', '2.0.0']]) };
+
+  it.each(['berry-node-modules', 'berry-pnp'] as const)('is the parent at S and at H, wherever hoisting puts the package (%s)', (layout) => {
+    const expected = ['pkg a@1.0.0 sha512-a-1.0.0', 'pkg e@2.0.0 sha512-e-2.0.0'];
+    expect(loads(installOf(layout, s)!, layout, 'pkgs/q/x.test.ts')).toEqual(expected);
+    expect(loads(installOf(layout, h)!, layout, 'pkgs/q/x.test.ts')).toEqual(expected);
   });
 });
