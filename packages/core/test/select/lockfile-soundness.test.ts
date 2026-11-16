@@ -4,18 +4,20 @@
 // install finds them (./install-tree.ts). That oracle never reads a lockfile and never calls
 // `locate`, so a wrong lookup in the model shows as a miss.
 //
-// The allowed misses are the two residual cases of §6.4 (ruling R9), counted apart and printed:
-// hoisting, for a reason two or more steps away, moved the copy that Node finds by position for
+// The allowed misses are the two residual cases of §6.4 (rulings R9 and R11): hoisting, for a
+// reason two or more steps away, moved the copy that Node finds by position for
 // - a name the test's own workspace package does not declare, or
 // - in Berry's node-modules layout, an unmet peer: one the package's parent does not provide;
-// while that name's node did not change. Any other miss fails.
+// while that name's node did not change. A missed test is exempt when every path to every item that
+// differs crosses such an edge, of either case or of both; it is counted by which cases it needs,
+// and the counts are printed. Any other miss fails.
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { buildStaticMap, readLockfile, type StaticInput, type TrommelMap } from '../../src/graph/static.ts';
 import { selectStatic, type HeadState, type Selection } from '../../src/select/plan.ts';
 import { fakeRepo, type FakeRepo } from '../graph/fake-repo.ts';
-import { importerOf, installPairArb, loads, loadsThrough, loadsWithoutUnmetPeers, TESTS, writeRepo, type Install, type Layout } from './install-tree.ts';
+import { importerOf, installPairArb, loads, loadsWithout, TESTS, writeRepo, type Exempt, type Install, type Layout } from './install-tree.ts';
 
 // The planner helpers of plan.test.ts.
 const isTest = (path: string) => /\.test\.[jt]s$/.test(path);
@@ -34,17 +36,18 @@ const RUNS = 700;
 const LAYOUTS: readonly Layout[] = ['pnpm', 'berry-node-modules', 'berry-pnp', 'classic'];
 const KINDS: Readonly<Record<Layout, string>> = { pnpm: 'pnpm', 'berry-node-modules': 'yarn-berry', 'berry-pnp': 'yarn-berry', classic: 'yarn-classic' };
 
-type Residual = 'undeclared' | 'unmet-peer';
+type Residual = 'undeclared' | 'unmet-peer' | 'mixed';
 
 /**
- * Which residual case of spec §6.4 a missed test is, or null for any other miss. The declarations,
- * the parents and the positions come from the generated install; a name node's hash is the one thing
- * read from the lockfiles.
- * - undeclared: every item that differs is reached only through names the test's own importer
- *   declares at neither S nor H, and each such name's node has the same hash at S and at H.
- * - unmet-peer (berry-node-modules only): every item that differs is reached only through peers that
- *   the package's parent does not provide, and that Node so finds by position, each with a name node
- *   of the same hash at S and at H. Such an item is in neither side's loads without those peers.
+ * Which residual case of spec §6.4 a missed test is (ruling R11), or null for any other miss. An
+ * item that differs is exempt when every path from the test to it, in the oracle's walk, crosses an
+ * exempt edge, so that it is in neither side's `loadsWithout`. The exempt edges are
+ * - the test's import of a name its own importer declares at neither S nor H, and
+ * - in berry-node-modules, a peer that the package's parent does not provide, found by position;
+ * each only when the name's node has the same hash at S and at H. The test is exempt when every
+ * item that differs is: by undeclared imports alone, by unmet peers alone, or only by the two
+ * together. Declarations, parents and positions come from the generated install; the lockfiles are
+ * read for the name-node hashes and nothing else.
  */
 function residualCase(layout: Layout, s: Install, h: Install, sRepo: FakeRepo, hRepo: FakeRepo, test: string): Residual | null {
   const sLock = readLockfile(sRepo.vfs);
@@ -55,32 +58,30 @@ function residualCase(layout: Layout, s: Install, h: Install, sRepo: FakeRepo, h
   const prefix = layout === 'pnpm' ? 'p:pnpm:' : 'p:yarn:';
   const unchanged = (name: string): boolean => sLock.lockfile.hash(`${prefix}${name}@*`) === hLock.lockfile.hash(`${prefix}${name}@*`);
   const importer = importerOf(s, test);
-  const through = [...loadsThrough(s, layout, test), ...loadsThrough(h, layout, test)];
+  const imports = new Set((s.tests.get(test) ?? []).filter((name) => !s.importers.get(importer)!.has(name) && !h.importers.get(importer)!.has(name) && unchanged(name)));
+  const unmetPeers = new Set(
+    layout === 'berry-node-modules' ? [...s.universe.values(), ...h.universe.values()].flatMap((version) => (version.peer === null ? [] : [version.peer])).filter(unchanged) : [],
+  );
   const before = new Set(loads(s, layout, test));
   const after = new Set(loads(h, layout, test));
   const differing = [...[...before].filter((item) => !after.has(item)), ...[...after].filter((item) => !before.has(item))];
-  if (
-    differing.every((item) =>
-      through
-        .filter(([, items]) => items.includes(item))
-        .every(([name]) => !s.importers.get(importer)!.has(name) && !h.importers.get(importer)!.has(name) && unchanged(name)),
-    )
-  ) {
+  const exempt = (edges: Exempt): boolean => {
+    const exact = new Set([...loadsWithout(s, layout, test, edges), ...loadsWithout(h, layout, test, edges)]);
+    return differing.every((item) => !exact.has(item));
+  };
+  const none = new Set<string>();
+  if (exempt({ imports, unmetPeers: none })) {
     return 'undeclared';
   }
-  if (layout === 'berry-node-modules') {
-    const peers = new Set([...s.universe.values(), ...h.universe.values()].flatMap((version) => (version.peer === null ? [] : [version.peer])).filter(unchanged));
-    const exact = new Set([...loadsWithoutUnmetPeers(s, layout, test, peers), ...loadsWithoutUnmetPeers(h, layout, test, peers)]);
-    if (differing.every((item) => !exact.has(item))) {
-      return 'unmet-peer';
-    }
+  if (exempt({ imports: none, unmetPeers })) {
+    return 'unmet-peer';
   }
-  return null;
+  return exempt({ imports, unmetPeers }) ? 'mixed' : null;
 }
 
 describe.each(LAYOUTS)('lockfile soundness, %s (property)', (layout) => {
   it('selects every test whose loaded packages changed', { timeout: 120_000 }, () => {
-    const residuals: Record<Residual, number> = { undeclared: 0, 'unmet-peer': 0 };
+    const residuals: Record<Residual, number> = { undeclared: 0, 'unmet-peer': 0, mixed: 0 };
     fc.assert(
       fc.property(installPairArb(layout), ({ s, h }) => {
         const sRepo = fakeRepo(writeRepo(s, layout));
@@ -114,6 +115,8 @@ describe.each(LAYOUTS)('lockfile soundness, %s (property)', (layout) => {
       }),
       { numRuns: RUNS },
     );
-    console.log(`lockfile soundness, ${layout}: residual misses of spec §6.4 in ${RUNS} runs: ${residuals.undeclared} through an undeclared name, ${residuals['unmet-peer']} through an unmet peer`);
+    console.log(
+      `lockfile soundness, ${layout}: residual misses of spec §6.4 in ${RUNS} runs: ${residuals.undeclared} by undeclared imports only, ${residuals['unmet-peer']} by unmet peers only, ${residuals.mixed} only by both`,
+    );
   });
 });

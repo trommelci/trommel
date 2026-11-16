@@ -16,8 +16,9 @@
 // The oracle shares no code with the readers, the model or `locate`, so it can catch a wrong lookup.
 // It follows Node's search path (or Plug'n'Play's declarations) from the test, by name, and lists
 // every package it loads as `pkg <id> <content>` and every name it cannot find as `missing <name>`.
-// `loadsWithoutUnmetPeers` is the same walk without the unmet peers Node finds by position, for the
-// second residual case of spec §6.4 (ruling R9).
+// `loadsWithout` is the same walk without the edges spec §6.4's residual leaves to position: a
+// test's import of a name its importer does not declare, and an unmet Berry peer in node-modules
+// (rulings R9 and R11).
 import fc from 'fast-check';
 
 export type Layout = 'pnpm' | 'berry-node-modules' | 'berry-pnp' | 'classic';
@@ -120,8 +121,14 @@ const editArb: fc.Arbitrary<Edit> = fc.record({ kind: fc.constantFrom(...EDITS),
 
 /**
  * S and H: H is S after one or two edits, both placed in `layout`. A pair that `hoist` cannot
- * install is not generated: a dependency cycle through two versions of one name, which nests
- * without end in any hoisted layout, or two packages that are each other's provided peer.
+ * install is skipped, and never reaches the property:
+ * - a dependency cycle through two versions of one name, which nests without end in any hoisted layout;
+ * - two packages that are each other's provided peer, under one parent (ruling R10). Yarn guarantees
+ *   that a peer the parent provides is the parent's copy, and spec §6.7 relies on that, so `hoist`
+ *   places the provided peer first and the package where it sees that copy. A mutual pair has no
+ *   first, and placing it any other way would write an install Yarn never writes. About 3% of
+ *   berry-node-modules pairs are skipped for it, and none in the other layouts: classic yarn has no
+ *   peers here, and pnpm and Plug'n'Play are not hoisted.
  */
 export function installPairArb(layout: Layout): fc.Arbitrary<{ readonly s: Install; readonly h: Install }> {
   return fc
@@ -445,35 +452,43 @@ export function importerOf(install: Install, test: string): string {
   return best;
 }
 
-/** What `test` loads through each name it imports: sorted items, by imported name. */
-export function loadsThrough(install: Install, layout: Layout, test: string): ReadonlyMap<string, readonly string[]> {
-  return walk(install, layout, test, null);
+/**
+ * The edges of the walk that spec §6.4's residual leaves to position (rulings R9, R11), by name. The
+ * caller decides which names qualify; the walk decides from the install which of their edges are exempt.
+ */
+export interface Exempt {
+  /** The test's own imports of these names, where its importer does not declare them. */
+  readonly imports: ReadonlySet<string>;
+  /** In berry-node-modules, a peer of one of these names that the package's parent does not provide. */
+  readonly unmetPeers: ReadonlySet<string>;
 }
+
+const NOTHING: Exempt = { imports: new Set(), unmetPeers: new Set() };
 
 /** Oracle: what `test` loads, walking the placed install as Node (or Plug'n'Play) does. Never calls a reader or `locate`. */
 export function loads(install: Install, layout: Layout, test: string): readonly string[] {
-  return union(loadsThrough(install, layout, test));
+  return walk(install, layout, test, NOTHING);
 }
 
 /**
- * What `test` loads by paths that never follow, in the hoisted Berry layout, an unmet peer named in
- * `peers`: a peer that the package's parent (the importer or package whose lookup loaded it) does
- * not provide, which Node then finds by position. Spec §6.4's second residual case. In every other
- * layout nothing is left out.
+ * What `test` loads by paths that cross no exempt edge: an import named in `exempt.imports` that the
+ * test's importer does not declare is not followed, nor, in the hoisted Berry layout, a peer named in
+ * `exempt.unmetPeers` that the package's parent (the importer or package whose lookup loaded it) does
+ * not provide, which Node would find by position. An item `loads` has and this has not is reached
+ * only through exempt edges.
  */
-export function loadsWithoutUnmetPeers(install: Install, layout: Layout, test: string, peers: ReadonlySet<string>): readonly string[] {
-  return union(walk(install, layout, test, layout === 'berry-node-modules' ? peers : null));
+export function loadsWithout(install: Install, layout: Layout, test: string, exempt: Exempt): readonly string[] {
+  return walk(install, layout, test, exempt);
 }
 
-function union(through: ReadonlyMap<string, readonly string[]>): readonly string[] {
-  return [...new Set([...through.values()].flat())].sort(compareStrings);
-}
-
-function walk(install: Install, layout: Layout, test: string, unmet: ReadonlySet<string> | null): ReadonlyMap<string, readonly string[]> {
-  const out = new Map<string, readonly string[]>();
+function walk(install: Install, layout: Layout, test: string, exempt: Exempt): readonly string[] {
+  const items = new Set<string>();
   const declared = install.importers.get(importerOf(install, test))!;
+  const unmet = layout === 'berry-node-modules' ? exempt.unmetPeers : NOTHING.unmetPeers;
   for (const name of install.tests.get(test) ?? []) {
-    const items = new Set<string>();
+    if (exempt.imports.has(name) && !declared.has(name)) {
+      continue;
+    }
     if (layout === 'berry-pnp') {
       // A workspace loads exactly what it declares.
       const version = declared.get(name);
@@ -490,21 +505,20 @@ function walk(install: Install, layout: Layout, test: string, unmet: ReadonlySet
         visitNode(install, location, declared, items, new Set(), unmet);
       }
     }
-    out.set(name, [...items].sort(compareStrings));
   }
-  return out;
+  return [...items].sort(compareStrings);
 }
 
 /**
  * A package directory, then each name it requires (its dependencies and its peer), found from there.
  * `parent` is what its parent provides: the test's importer's declarations, or the dependencies of
  * the package that required it. A peer's copy has the same parent as the package whose peer it is.
- * With `unmet`, a peer named there that the parent does not provide is not followed.
+ * A peer named in `unmet` that the parent does not provide is not followed.
  */
-function visitNode(install: Install, location: string, parent: ReadonlyMap<string, string>, items: Set<string>, seen: Set<string>, unmet: ReadonlySet<string> | null): void {
+function visitNode(install: Install, location: string, parent: ReadonlyMap<string, string>, items: Set<string>, seen: Set<string>, unmet: ReadonlySet<string>): void {
   const id = install.copies.get(location)!;
   const version = install.universe.get(id)!;
-  const follow = version.peer !== null && (unmet === null || !unmet.has(version.peer) || parent.has(version.peer));
+  const follow = version.peer !== null && (!unmet.has(version.peer) || parent.has(version.peer));
   const key = `${location} ${follow ? 'peer' : ''}`;
   if (seen.has(key)) {
     return;
