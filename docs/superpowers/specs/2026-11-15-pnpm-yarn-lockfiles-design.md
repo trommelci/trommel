@@ -237,14 +237,16 @@ Every other key and field is read past, as long as it parses within the subset. 
 
 ### 8.1 One lockfile interface
 
-The builder, the planner and `trommel diff` stop asking which format they have. Every parsed lockfile offers the same four things. The names are a sketch:
+The builder, the planner and `trommel diff` stop asking which format they have. Every parsed lockfile offers the same five things. The names are a sketch:
 
 ```ts
 interface Lockfile {
   readonly kind: 'npm' | 'pnpm' | 'yarn-berry' | 'yarn-classic';
   readonly path: string;
-  /** Every p: node the lockfile defines: key → hash. */
-  readonly nodes: ReadonlyMap<string, string>;
+  /** Every p: node the lockfile defines: key → hash, null for ⊥. */
+  readonly nodes: ReadonlyMap<string, string | null>;
+  /** The hash of any key, name nodes computed on demand; undefined for a key it does not know. */
+  hash(key: string): string | null | undefined;
   /** The p: nodes a p: node has edges to, sorted. */
   dependencies(key: string): readonly string[];
   /** The p: node a bare import of `name` from directory `dir` loads, or null. */
@@ -262,7 +264,7 @@ npm's lockfile is adapted to it, with no change to its nodes or edges. That incl
 
 ### 8.3 The planner (`core/select/plan.ts`)
 
-- **Recomputed `p:` nodes:** for every `p:` key in the map, the hash at H is `head.lockfile.nodes.get(key)`, else ⊥. Lookup locations, entries, name nodes and `#env` are recomputed alike.
+- **Recomputed `p:` nodes:** for every `p:` key in the map, the hash at H is `head.lockfile.hash(key)`, else ⊥. Lookup locations, entries, name nodes and `#env` are recomputed alike. `hash()` computes a name node that case 2 of §6.4 added to the map, and answers for case 3's ⊥ node once the lockfile knows its name.
 - **The shadow rule** runs for npm lockfiles only, as today (§6.3).
 - **Untrusted maps:** a change of the lockfile's kind or path is L3, where today only its path is compared. So a move from Berry to classic, or from yarn to pnpm, runs everything once, with that cause in the summary.
 - **Unparseable lockfiles:** unchanged.
