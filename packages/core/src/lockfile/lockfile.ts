@@ -9,7 +9,11 @@ export interface Lockfile {
   readonly path: string;
   /** The nodes this lockfile always defines: key → hash, null for ⊥. */
   readonly nodes: ReadonlyMap<string, string | null>;
-  /** The hash of any key of this lockfile, name nodes included on demand; undefined if it is none of its keys. */
+  /**
+   * The hash of any key of this lockfile, name nodes included on demand; undefined if it is none of
+   * its keys. A pnpm or yarn lockfile also answers for a root lookup `p:npm:node_modules/<name>` that
+   * is not a node: with the name's name node once the lockfile knows the name (spec §6.4, case 3).
+   */
   hash(key: string): string | null | undefined;
   /** The keys a key has edges to, sorted and unique; [] for a key it does not know. */
   dependencies(key: string): readonly string[];
