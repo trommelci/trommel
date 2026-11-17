@@ -1,7 +1,7 @@
 # Hand-off: Trommel milestone M1, after roadmap day 10
 
 - **Written:** 2026-11-11 (UTC), at `main` = `00fea91` plus this document.
-- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for SMAP v0 (DECISIONS 33 and 34): item 4 is done, and the map on disk is a SMAP file.
+- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for SMAP v0 (DECISIONS 33 and 34): item 4 is done, and the map on disk is a SMAP file. Updated on 2026-11-16 for pnpm and yarn lockfiles (DECISIONS 36 and 37): they are parsed, and the engine is `trommel-static-4`.
 - **For:** whoever continues the implementation, person or agent.
 - **Reading order:** this file, then [DECISIONS.md](DECISIONS.md), then the docs it points to.
 
@@ -61,6 +61,19 @@
   - At 10,000 files the map is 1.11 MB where the JSON was 7.07 MB, and a plan for an edit takes 0.09 s where it took 0.18 s.
   - **Expect one run-all plan** on each branch until a push to `main` caches a SMAP map. The summary gives the cause: no map at `.trommel/map/map.smap`.
   - 712 tests pass in 36 files: the 14 tests of the JSON reader went with it.
+- **pnpm and yarn lockfile readers (2026-11-15, branch `m1/lockfile-readers`, DECISIONS 36):**
+  - `packages/core/src/lockfile/` reads pnpm 9.0, yarn Berry 8 and 10, and classic yarn into one resolved model, with a strict YAML subset of its own. Each reader gives a model or an `unparseable`, and none throws: a fuzz test checks 2,000 mutations per reader.
+  - **It landed with no caller,** so on its own it changed no plan. The engine stayed `trommel-static-3` and both golden hashes were as they were.
+  - The five real samples read with no refusal: hono 1,075 entries, zod 1,276 (5 unresolved), prettier 1,027 (1), es-toolkit 1,647 and excalidraw 1,331, each in under 16 ms. See [bench/README.md](bench/README.md).
+  - 890 tests pass in 42 files.
+- **The lockfile cut-over (2026-11-16, branch `m1/lockfile-cutover`, DECISIONS 37):**
+  - The builder, the planner and `trommel diff` read every lockfile through one `Lockfile` interface. A pnpm or yarn bump now selects the tests that reach the changed packages, where any change to those lockfiles used to run everything (L3). npm's nodes and edges are unchanged.
+  - The engine is `trommel-static-4`, and both golden hashes moved with the engine id alone. SMAP's `META` has lockfile kinds 3 to 5 for pnpm, yarn Berry and classic yarn.
+  - A soundness property plans 2,800 generated installs in four layouts against an oracle that walks the install as Node does. Its only tolerated misses are the two hoisting cases of §11, under rulings R9 to R11, which wait on Ojas's confirmation.
+  - On the last 70 commits of this repository the tests that would run, their why-paths and the escalations are identical to those of the CLI on `main`: 728 of 2,337 possible test-file runs.
+  - **Not done:** the corpus check of the design's §9.4, which needs Ojas's approval to clone `honojs/hono` and `excalidraw/excalidraw` (§10).
+  - **Expect one run-all plan** on each branch until a push to `main` caches a `trommel-static-4` map. The summary gives the engine mismatch as the cause.
+  - 937 tests pass in 44 files.
 
 **First four things to do:**
 1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 4 of its worklist are done. M2 is item 5, and the rest of M1 is in §8.
@@ -161,7 +174,7 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `712 passed` from `npm test` (after DECISIONS 34), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `945 passed` from `npm test` (after DECISIONS 37), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
@@ -185,13 +198,14 @@ node packages/cli/src/main.ts plan --mode shadow --static --map .trommel/map
 | `packages/core/src/graph/graph.ts` | CSR graph: nodes numbered in sorted-name order; `STATIC`/`DYNAMIC`/`DECLARED` provenance bits; multi-source reverse BFS; forward reach; why-paths | `GraphBuilder.addNode/addEdge/build`, `reverseReach`, `forwardReach`, `whyPath` | `test/graph/graph.test.ts` (P1, P3, forward reach, why-paths, determinism) |
 | `packages/core/src/resolve/resolver.ts` | Resolution over a `Vfs`, the git view of a snapshot. Probes the union of TypeScript, Vite and Jest candidate orders, and records targets, absent paths, `d:` directories, configs and `g:` sets. Covers tsconfig `paths`/`baseUrl`/`extends`, `exports`/`imports`, workspaces, `__mocks__` and symlinks. Evidence that depends on one path or one directory is an `r:` or `c:` hub, worked out once and shared (DECISIONS 32); a `Resolution` lists everything plus its `hubs` and its `direct` part | `Resolver.resolve({from, specifier, kind, patterns?, base?})`, `Resolver.hub(key)`, `Resolver.fileConfigs()`, `Resolver.workspaces()`, `Resolver.ownerDir()` (nearest `package.json`, for resolution), `Resolver.packageOf()` (deepest workspace member, for escalations), `MemoryVfs`, `exportsTargets`, `joinPath`, `dirname` | `test/resolve/resolver.test.ts` (fixtures, hubs, `fileConfigs`, `packageOf`, plus the evidence-completeness and hub-split properties); fixtures in `test/fixtures/resolve/` |
 | `packages/core/src/resolve/{jsonc,yaml,glob}.ts` | JSONC (tsconfig), the pnpm-workspace YAML subset, globs | `parseJsonc`, `parsePnpmWorkspace`, `globToRegExp`, `escapeGlob` | `test/resolve/formats.test.ts` (34) |
-| `packages/core/src/lockfile/npm.ts` | package-lock v2/v3 → `p:npm:<install location>`. Node-style `locate`, package-to-package dependencies, diff, lockfile detection; other formats are `unparseable` (L3) | `parseNpmLockfile`, `NpmLockfile.locate/dependencies`, `diffLockfiles`, `detectLockfile` | `test/lockfile/npm.test.ts` (16) |
+| `packages/core/src/lockfile/npm.ts` | package-lock v2/v3 → `p:npm:<install location>`, with Node-style `locate` and package-to-package dependencies, adapted to the `Lockfile` interface by `npmLockfile` (DECISIONS 37). Lockfile detection at the root: npm, pnpm and yarn are read; bun, npm v1 and more than one lockfile are `unparseable` (L3) | `parseNpmLockfile`, `npmLockfile`, `detectLockfile`, `LOCKFILE_PATHS` | `test/lockfile/npm.test.ts` |
+| `packages/core/src/lockfile/{yaml,lockfile,model,pnpm,yarn-berry,yarn-classic}.ts` | The pnpm and yarn readers (DECISIONS 36), which the builder and the planner use (DECISIONS 37). `yaml.ts` is a strict YAML subset; `model.ts` is the resolved model, `lockfileFromModel` (`p:pnpm:` and `p:yarn:` entries, lookups, name nodes `<name>@*`, `p:pnpm:#env`) and `modelProblem`; `lockfile.ts` is the `Lockfile` interface every format offers, and `diffLockfiles` | `parsePnpmLockfile`, `parseYarnBerryLockfile`, `parseYarnClassicLockfile`, `lockfileFromModel`, `parseYamlSubset`, `diffLockfiles` | `test/lockfile/{yaml,model,pnpm,yarn-berry,yarn-classic,fuzz,lockfile}.test.ts` |
 | `packages/core/src/index.ts` | The package's public exports. Workspace packages export `./src/*.ts` directly (DECISIONS 3) | — | — |
 | `packages/core/src/git/{cat-file,vfs}.ts` | `git cat-file --batch` parser; `GitVfs`, the resolver's `Vfs` over a `TreeIndex` with blobs from git | `readBlobs(cwd, oids)`, `CatFileParser`, `GitVfs.load`, `repoRoot` | `test/git/cat-file.test.ts`, `test/git/vfs.test.ts`, `test/git/git.test.ts` |
-| `packages/core/src/graph/{static,map}.ts` | The static graph builder and the map as the planner holds it (`TrommelMap`; on disk it is SMAP, and `trommel graph` prints it as canonical JSON): node keys and hashes, edges, `u:` nodes (DECISIONS 23), `r:` and `c:` hubs (DECISIONS 32). A function of the tree, the config and the engine only (DECISIONS 28) | `buildStaticMap`, `ENGINE`, `hubHash`, `isHub`, `mapGraph`, `mapIndex`, `MapError`, `readLockfile`, `isModule`/`isLexed` | `test/graph/static.test.ts`, `test/graph/map.test.ts`, `test/graph/golden.test.ts` (the pinned fixture hash) |
-| `packages/core/src/smap/{bytes,container,smap}.ts` | SMAP v0 (ADR-0009, [docs/smap-format.md](docs/smap-format.md), DECISIONS 33): varints, strings and front coding; the container with its trailer and layer addresses; the snapshot and static layers to and from `TrommelMap`. `trommel graph --out` writes it, and `trommel plan` reads it (DECISIONS 34) | `encodeSmap`, `decodeSmap` (map, graph, layer addresses), `SmapEncodeError` | `test/smap/{bytes,container,smap,golden,fuzz}.test.ts` (213); `test/fixtures/smap/golden.smap` |
+| `packages/core/src/graph/{static,map}.ts` | The static graph builder and the map as the planner holds it (`TrommelMap`; on disk it is SMAP, and `trommel graph` prints it as canonical JSON): node keys and hashes, edges, `u:` nodes (DECISIONS 23), `r:` and `c:` hubs (DECISIONS 32). A function of the tree, the config and the engine only (DECISIONS 28). `readLockfile` reads any of the four lockfile kinds, with classic yarn's workspace from the members' `package.json` files; the engine is `trommel-static-4` (DECISIONS 37) | `buildStaticMap`, `ENGINE`, `hubHash`, `isHub`, `mapGraph`, `mapIndex`, `MapError`, `readLockfile`, `isModule`/`isLexed` | `test/graph/static.test.ts`, `test/graph/map.test.ts`, `test/graph/golden.test.ts` (the pinned fixture hash) |
+| `packages/core/src/smap/{bytes,container,smap}.ts` | SMAP v0 (ADR-0009, [docs/smap-format.md](docs/smap-format.md), DECISIONS 33): varints, strings and front coding; the container with its trailer and layer addresses; the snapshot and static layers to and from `TrommelMap`. `trommel graph --out` writes it, and `trommel plan` reads it (DECISIONS 34). Lockfile kinds 3 to 5 are pnpm, yarn Berry and classic yarn (DECISIONS 37) | `encodeSmap`, `decodeSmap` (map, graph, layer addresses), `SmapEncodeError` | `test/smap/{bytes,container,smap,golden,fuzz}.test.ts` (219); `test/fixtures/smap/golden.smap` |
 | `packages/core/src/environment.ts` | Environment components for the M2 recorder: runtime, platform and tracked variables. No caller yet, and lint keeps it out of the graph and selection modules (DECISIONS 28) | `environment`, `envHash` | `test/environment.test.ts` (6) |
-| `packages/core/src/select/plan.ts` | Δ(S,H) from a map to a head snapshot, escalations L1/L3, reverse BFS with why-paths (DECISIONS 24). Unmapped inputs seed their owning package (DECISIONS 29). Hubs are recomputed at H when a listing changed (DECISIONS 32) | `selectStatic`, `runAll` | `test/select/plan.test.ts` (examples plus the 2,000-run soundness property) |
+| `packages/core/src/select/plan.ts` | Δ(S,H) from a map to a head snapshot, escalations L1/L3, reverse BFS with why-paths (DECISIONS 24). Unmapped inputs seed their owning package (DECISIONS 29). Hubs are recomputed at H when a listing changed (DECISIONS 32). Every `p:` node is recomputed from the head lockfile, whatever its format, and a change of lockfile kind or path is L3 (DECISIONS 37) | `selectStatic`, `runAll` | `test/select/plan.test.ts` (examples plus the 2,000-run soundness property); `test/select/lockfile-soundness.test.ts` (the 2,800-run lockfile property), with its generator and oracle in `test/select/install-tree.ts` |
 | `packages/cli/src/` | `trommel graph`, `diff`, `plan`: `args.ts` (parseArgs, kickoff gap 1), `config.ts` (§5.1 validation, test discovery), `report.ts` (plan JSON, matrix, summary), `cli.ts`, `main.ts`. `bin: trommel` | `node packages/cli/src/main.ts --help` | `test/{args,config,report,cli}.test.ts` (`cli.test.ts` is end to end) |
 | `packages/vitest`, `packages/jest` | Placeholders for M2 | — | — |
 | `tools/corpus/` | The corpus collector (§5). `repos.json` lists the repositories; `corpus-repo/` is the template for the data repo | `node tools/corpus/src/main.ts …` | `tools/corpus/test/*` (50) |
@@ -199,7 +213,7 @@ node packages/cli/src/main.ts plan --mode shadow --static --map .trommel/map
 | `scripts/` | CI guards: `check-zero-deps.ts`, `check-dco.ts` (logic in `scripts/lib/`). `lib/test-files.ts` turns a shard's `TROMMEL_TEST_FILES` list into Vitest's `include` (DECISIONS 25) | `npm run check:deps`, `npm run check:dco` | `scripts/test/*` (37) |
 | `trommel.config.json` | Trommel's config for this repository: 3 shards, one declared input for the CLI end-to-end test, and `inputs.ignore` for benchmarks, CI guard entry points and the lint config (DECISIONS 29) | — | — |
 | `.github/workflows/trommel.yml` | The walking skeleton: `plan`, `test` (one job per shard), `trommel-gate`, and `map` on pushes to `main` (DECISIONS 25) | — | — |
-| `bench/` | `TARGETS.md` (pre-registered), `CORPUS.md` (selection criteria and first-pass vetting), `README.md` (recorded numbers), `results/*.json`, scripts `ls-tree.ts`, `lex.ts`, `graph.ts` | — | — |
+| `bench/` | `TARGETS.md` (pre-registered), `CORPUS.md` (selection criteria, first-pass vetting, lockfile formats), `README.md` (recorded numbers), `results/*.json`, scripts `ls-tree.ts`, `lex.ts`, `graph.ts`, `static-graph.ts`, `lockfile.ts` | — | — |
 | `.github/workflows/ci.yml` | `static` (deps, lint, typecheck; Node 26), `test` (Ubuntu, Node 22/24/26), `windows` (Node 22), `dco` (PRs only) | — | — |
 
 ## 5. The corpus collector
@@ -418,10 +432,10 @@ PRs can restore caches saved on the base branch. Verifying the trust rules for `
 ## 8. After day 10: the rest of M1
 
 These come from the M1 row of [roadmap §1](docs/roadmap.md):
-- **pnpm and yarn lockfile parsers.**
+- ~~**pnpm and yarn lockfile parsers.**~~ Done (DECISIONS 36 and 37), except the corpus check.
   - 24 of the 26 vetted repositories use them (19 pnpm, 5 yarn), so they gate the replay corpus in M4 ([bench/CORPUS.md](bench/CORPUS.md)).
-  - Today `detectLockfile` reports both as unparseable (L3).
-  - The YAML subset in `core/resolve/yaml.ts` is too small for `pnpm-lock.yaml`.
+  - pnpm 9.0, yarn Berry 8 and 10, and classic yarn are read into one model with a YAML subset of their own (`core/lockfile/`), and the builder, the planner and `trommel diff` use them. The engine is `trommel-static-4`.
+  - **Still to do:** the corpus check of the design's §9.4 on hono and excalidraw, once Ojas approves the clones (§10). DECISIONS 37 lists its checks.
 - **The four M1 items of §1.1,** before SMAP: ~~selector backstops~~ (done, DECISIONS 29), ~~the environment out of the map~~ (done, DECISIONS 28), ~~resolution hubs~~ (done, DECISIONS 32), then ~~SMAP v0 itself~~ (done, DECISIONS 33 and 34).
 - ~~**SMAP v0, byte-identical across OSes.**~~ Done (DECISIONS 33 and 34).
   - The codec is built, and `smap/golden.test.ts` pins the SMAP file of the golden repository on every CI OS: its length, its SHA-256 and the address of each layer. `graph/golden.test.ts` still pins the same map as canonical JSON, so a failure in one alone says which side moved.
@@ -451,7 +465,9 @@ These come from the M1 row of [roadmap §1](docs/roadmap.md):
 | T6: `trommel graph` cold, synthetic 10,000-file TS monorepo (42 MB) | **1.8 s** with hubs (target 30 s); 20,107 nodes, 145,041 edges, 1.11 MB SMAP map (7.07 MB as JSON); plan from it 0.09 s, or 0.24 s when a file is added (0.18 s and 0.36 s from the JSON map). Before hubs, the same day: 2.5 s, 106,388 nodes, 683,501 edges, 26.7 MB, plan 0.84 s | `bench/results/2026-11-15-static-graph-smap-win32.json`, `2026-11-14-static-graph-win32.json`, `…-before-hubs-win32.json` |
 | `trommel graph` cold on this repository at `65a5958` | 0.37 s; 514 nodes, 1,044 edges, 142 KB (before hubs: 1,466, 2,790, 263 KB) | `bench/results/2026-11-14-static-graph-trommel-win32.json` |
 | Hubs against `main`'s planner, this repository's last 70 commits | Identical selections on all 70: 592 of 1,753 test-file runs | DECISIONS 32 |
+| The lockfile cut-over against `main`'s planner, this repository's last 70 commits | Identical selections, why-paths and escalations on all 70: 728 of 2,337 test-file runs; each map differs only by the engine id | DECISIONS 37 |
 | Static selection soundness | 2,000 random repository pairs; 20 hand mutants caught | `packages/core/test/select/plan.test.ts` |
+| Lockfile soundness | 2,800 generated installs (pnpm, Berry `node-modules`, Plug'n'Play, classic yarn), passing at 51 seeds; only the two hoisting residuals of §11 are tolerated | `packages/core/test/select/lockfile-soundness.test.ts`, DECISIONS 37 |
 
 All measured on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. There are no Linux numbers yet.
 
@@ -477,9 +493,15 @@ The review recommends an answer to each of 1, 2, 4 and 5 in its §4. In short: m
 13. Cloning the 15 replay candidates to time their suites (R2). Without it the M4 compute budget is a guess.
 14. Which of the review's remaining findings (M6, M8, L1–L7) to fix, and when.
 
+**Added by the lockfile cut-over (2026-11-16, DECISIONS 37).**
+
+15. Cloning `honojs/hono` and `excalidraw/excalidraw` for the corpus check of the lockfile design's §9.4. Its result completes DECISIONS 37.
+16. Confirming rulings R9, R10 and R11, which decide the misses the lockfile soundness property tolerates. DECISIONS 37 states each.
+17. Whether phantom dependencies (§11) stay a known gap. The whole-branch review found the gap, and nobody has decided it yet.
+
 ## 11. Known gaps and limits in the merged code
 
-These are honest limits, not bugs. Each one errs towards running more tests.
+These are honest limits, not bugs. Most err towards running more tests; the lockfile gaps below can skip one.
 
 - **Lexer.** `typeof import('x')` in a type position counts as a dynamic import. JSX detection is a heuristic based on where an expression can start. A would-be regex that reaches the end of its line is reinterpreted as division.
 - **Resolver.**
@@ -490,7 +512,7 @@ These are honest limits, not bugs. Each one errs towards running more tests.
 - **Graph.** The build merges edges through a `Map` (1.6 s at 1M edges). The M3 map decode replaces it.
 - **Static selection (day 9, DECISIONS 23–24).**
   - Every would-skip is unproven: anything a test reads through `fs` (fixtures, snapshots) is invisible statically. An unmapped input escalates its owning package (L1), which covers most of it: the package's own tests, and every test elsewhere that reaches the package (DECISIONS 29).
-  - A lockfile bump of a package that no test imports, such as eslint, runs everything: the package belongs to the root. `inputs.ignore` can name its install location (`node_modules/eslint`). An unreached glob also escalates the root, and cannot be ignored.
+  - A lockfile bump of a package that no test imports, such as eslint, runs everything: the package belongs to the root. `inputs.ignore` can name its install location (`node_modules/eslint`), which in pnpm and yarn also matches its lockfile entries and its name node. An unreached glob also escalates the root, and cannot be ignored.
   - An added module is not in the map, so it never counts as unreached (entry 24's exemption). Whatever starts to use it shows up as a change of its own.
   - The review's DECLARED edge from every test to its runner's package node is not built. A runner package that no test reaches escalates when it changes; one that tests import is reached through them.
   - Every test that reaches an uncertain file always runs, whether or not anything changed.
@@ -501,7 +523,16 @@ These are honest limits, not bugs. Each one errs towards running more tests.
   - The cache key in `trommel.yml` does not name the map format. A cache saved before the cut-over holds only `map.json`, which reads as "no map" and runs everything once. The key layout of ADR-0021 is M3 work.
   - When any directory listing changed, a plan recomputes every `r:` and `c:` hub at the head (0.19 s at 10,000 files). Hubs are not yet limited to the directories that changed.
   - A probed directory's listing is part of its hub's hash, as its `d:` node was, so a file added to `src/d/` reruns the importers of `./d` even when no candidate changed (DECISIONS 32).
-  - Only npm lockfiles are parsed. With pnpm or yarn, every bare import depends on the lockfile file, and any change to it runs everything (L3).
+  - **Lockfiles** (DECISIONS 37; [design](docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md) §6.4 and §6.7). The first two and the last are known gaps within Ojas's decisions (design §12); the unmet-peer case awaits his confirmation (§10 item 16), and phantom dependencies are not yet decided (§10 item 17). Every would-skip in M1 is unproven, and M2's records, which see the file a test loaded, close the first three.
+    - **Second-order hoisting moves.** In a hoisted install (classic yarn, Berry's `node-modules`, pnpm's `node-linker=hoisted`), a package can move between `node_modules` folders because of a change two or more steps away, and take its dependencies with it. Two cases follow, while no `p:` node on the test's path changes:
+      - a file imports a name its own workspace package does not declare, and loads another copy of it;
+      - an unmet Berry peer, one the package's parent does not provide, is found by position and reaches another copy (rulings R9 and R11, which wait on Ojas's confirmation, §10).
+
+      The lockfile soundness property counts both, and fails on any other miss. At the default seed it counts 4 such misses in 700 runs of Berry's `node-modules` layout, 1 in classic yarn, and none in pnpm or Plug'n'Play.
+    - **Classic yarn's peers.** The lockfile does not record peers, so they are not edges. A test that reaches a package but not its peer misses a bump of the peer.
+    - **Phantom dependencies** (found by the whole-branch review; not yet decided, §10 item 17). A package that requires a name it does not declare, and finds it by hoisting or through pnpm's `.pnpm/node_modules`, has no edge to it. npm has the same gap.
+    - **The name node's precision cost on pnpm monorepos.** A file that imports a name its own workspace package does not declare depends on that name's name node, which changes whenever any copy of the name is bumped, added or removed, or a package that depends on it is bumped. So where tests import a root-declared vitest, a bump of a `@vitest/*` package reruns those tests. Reading pnpm's `node-linker` would let the isolated layout walk up to the declaring importer exactly.
+    - bun lockfiles, pnpm other than 9.0, Berry other than 8 and 10, and npm v1 are unparseable, so any change to them runs everything (L3). Only root lockfiles are read.
   - Precision costs seen on hono:
     - A version bump in the root `package.json` reruns every test, because each file depends on its whole nearest `package.json`. Hashing only the fields that change module semantics (`type`, `exports`, `imports`, `main`, dependencies) would fix it.
     - A self-import whose `exports` point at build output (`dist/`) is unresolved, so it is uncertain.
@@ -584,6 +615,8 @@ These are honest limits, not bugs. Each one errs towards running more tests.
 | 33 | The SMAP v0 codec: container, snapshot layer and static layer; which hashes are stored; unpaired surrogates; the engine id stays |
 | 34 | The cut-over: the map on disk is SMAP; the JSON reader removed; the 70-commit replay; SMAP numbers at 10,000 files |
 | 35 | The external review of SMAP v0: the section count checked before use, two clarifications in the specification, lint ignores `.claude/` and `.superpowers/` |
+| 36 | The pnpm and yarn lockfile readers: a strict YAML subset, the resolved model, three readers with no caller yet, 78 hand mutants |
+| 37 | The lockfile cut-over: one `Lockfile` interface, SMAP kinds 3 to 5, engine `trommel-static-4`, the planner on every format, the soundness property and its residuals (rulings R9 to R11), the 70-commit replay, the corpus check still to run |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 

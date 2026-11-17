@@ -70,8 +70,12 @@ Without an argument, the script builds a synthetic npm-workspaces monorepo with 
 | 2026-11-14 | Trommel at `65a5958`, with hubs | 238 | — | 514 | 1,044 | 0.14 MB | 0.37 s | 0.07 s | — |
 | 2026-11-15 | synthetic, map as SMAP | 10,023 | 42.1 | 20,107 | 145,041 | **1.11 MB** (7.07 MB as JSON) | 1.8 s | 1.2 s | decode 0.05 s + select 0.04 s; select 0.18 s when a file is added |
 | 2026-11-15 | Trommel at `c79d5a0`, map as SMAP | 258 | 0.6 | 531 | 1,155 | 0.05 MB (0.15 MB as JSON) | 0.36 s | 0.07 s | — |
+| 2026-11-16 | synthetic, `main` at `74ca9b4` (engine `trommel-static-3`) | 10,023 | 42.1 | 20,107 | 145,041 | 1.11 MB | 2.52 s | 2.9 s | decode 0.14 s + select 0.08 s; select 0.42 s when a file is added |
+| 2026-11-16 | synthetic, lockfile cut-over (`trommel-static-4`) | 10,023 | 42.1 | 20,107 | 145,041 | 1.11 MB | 2.55 s | 2.9 s | decode 0.14 s + select 0.06 s; select 0.45 s when a file is added |
+| 2026-11-16 | Trommel at `3686470`, built by `main` at `74ca9b4` | 284 | 0.8 | 552 | 1,286 | 0.05 MB (0.16 MB as JSON) | 0.53 s | 0.11 s | — |
+| 2026-11-16 | Trommel at `3686470`, lockfile cut-over | 284 | 0.8 | 552 | 1,286 | 0.05 MB (0.16 MB as JSON) | 0.55 s | 0.10 s | — |
 
-All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in [results/](results/): the 2026-11-12 files, and for 2026-11-14 [static-graph-before-hubs](results/2026-11-14-static-graph-before-hubs-win32.json), [static-graph](results/2026-11-14-static-graph-win32.json), [static-graph-trommel-before-hubs](results/2026-11-14-static-graph-trommel-before-hubs-win32.json) and [static-graph-trommel](results/2026-11-14-static-graph-trommel-win32.json); and for 2026-11-15 [static-graph-smap](results/2026-11-15-static-graph-smap-win32.json) and [static-graph-trommel-smap](results/2026-11-15-static-graph-trommel-smap-win32.json). The "before hubs" rows ran `main`'s own copy of this script on the same machine the same day, so the two pairs compare like with like.
+All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in [results/](results/): the 2026-11-12 files, and for 2026-11-14 [static-graph-before-hubs](results/2026-11-14-static-graph-before-hubs-win32.json), [static-graph](results/2026-11-14-static-graph-win32.json), [static-graph-trommel-before-hubs](results/2026-11-14-static-graph-trommel-before-hubs-win32.json) and [static-graph-trommel](results/2026-11-14-static-graph-trommel-win32.json); for 2026-11-15 [static-graph-smap](results/2026-11-15-static-graph-smap-win32.json) and [static-graph-trommel-smap](results/2026-11-15-static-graph-trommel-smap-win32.json); and for 2026-11-16 [static-graph-main](results/2026-11-16-static-graph-main-win32.json), [static-graph](results/2026-11-16-static-graph-win32.json), [static-graph-trommel-main](results/2026-11-16-static-graph-trommel-main-win32.json) and [static-graph-trommel](results/2026-11-16-static-graph-trommel-win32.json). The "before hubs" rows and the 2026-11-16 `main` rows ran `main`'s own copy of this script on the same machine the same day, so each pair compares like with like.
 - **hono** was cloned with `--filter=blob:none`. At HEAD every blob is local. Building an older revision fetched its missing blobs one by one and took 18.7 s, which is network time, not Trommel's.
 - **T6 is met:** 1.8 s cold against 30 s, and against the 10 s goal. Incremental builds (under 3 s) are not measured yet; extraction is not cached across runs.
 - **Probe edges dominated,** as DECISIONS 17 expected: about 10 edges per extensionless import, 26.7 MB of JSON at 10,000 files. Resolution hubs (DECISIONS 32) cut nodes by 81% and edges by 79%: 9,520 `r:` and 520 `c:` hubs replace 86,802 absent files and 9,541 absent directories. The JSON map was 7.1 MB.
@@ -80,3 +84,27 @@ All on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. The raw output is in 
   - **Decoding replaces the parse and the rebuild.** A plan for an edit takes 0.09 s: 0.05 s to decode, which checks the trailer and every section and gives the CSR graph, then 0.04 s to select. With the JSON map the same plan took 0.18 s. A plan where a file was added takes 0.24 s, against 0.36 s.
   - **Encoding costs about as much as JSON did:** 0.09 s for `encodeSmap`, where canonical JSON took 0.05 to 0.08 s. The cold CLI is unchanged at 1.8 s.
   - A second run of the script gave the same numbers within 10 ms.
+- **The lockfile cut-over** (DECISIONS 37) changes nothing here, as it should: the synthetic repository and this one use npm, whose nodes and edges are unchanged. Both builds give the same node and edge counts and the same map size, and each map differs from `main`'s only by the engine id.
+  - Each side ran twice, alternating. The table gives the first run of each.
+    - **Cold CLI and selection:** two runs of one build differ by about as much as the two builds do. The cold CLI took 2.52 and 2.54 s on `main` and 2.55 and 2.53 s with the cut-over. Selecting against a head that adds a file took 0.42 and 0.35 s on `main` and 0.45 and 0.37 s with the cut-over.
+    - **Decoding and `buildStaticMap`:** `main`'s own two runs differ by more than the two builds do. Decoding took 0.14 and 0.10 s on `main` and 0.14 and 0.13 s with the cut-over. `buildStaticMap` took 2.91 and 3.12 s on `main` and 2.87 and 2.92 s with the cut-over.
+  - **The machine was slower that day than on 2026-11-15**, for both builds alike: the cold CLI took 2.5 s where it took 1.8 s, and `buildStaticMap` 2.9 s where it took 1.2 s. Compare the 2026-11-16 rows only with each other.
+
+## Lockfile readers: `node bench/lockfile.ts <file> …`
+
+This reads each lockfile with its reader, picked by file name: `*pnpm-lock.yaml` is pnpm, and `*yarn.lock` is classic yarn when the text holds `# yarn lockfile v1`, else Berry. Classic yarn is read with an empty `ClassicWorkspace`. It prints the bytes, the median parse time of 5 runs, and the counts of entries, importers, references and unresolved references (those that point at a name node). A refusal is printed and recorded, not hidden.
+
+The five samples of the design (spec §9.5) are the lockfiles of hono and zod (pnpm), prettier and es-toolkit (Berry) and excalidraw (classic). They were downloaded from the commits spec §9.5 pins, outside this repository, and are recorded by base name.
+
+| Date | Platform | Sample | Bytes | Median | Entries | Importers | References | Unresolved |
+|---|---|---|---|---|---|---|---|---|
+| 2026-11-15 | Windows 11, Ryzen AI 7 350, Node 26.4 | hono, pnpm | 332,558 | 10.7 ms | 1,075 | 9 | 1,522 | 0 |
+| | | zod, pnpm | 433,789 | 10.5 ms | 1,276 | 9 | 2,700 | 5 |
+| | | prettier, Berry | 364,006 | 7.8 ms | 1,027 | 1 | 1,795 | 1 |
+| | | es-toolkit, Berry | 583,970 | 15.9 ms | 1,647 | 5 | 2,659 | 0 |
+| | | excalidraw, classic | 481,747 | 9.9 ms | 1,331 | 0 | 2,667 | 0 |
+
+The raw output is in [results/2026-11-15-lockfile-win32.json](results/2026-11-15-lockfile-win32.json).
+- **No refusal,** and the largest file (584 KB) reads in under 16 ms.
+- **zod's 5 unresolved** are its peers on its own workspace package. **prettier's 1** is `remark-parse`, which `resolutions` redirects to `trim`. Neither is a refusal: the reference takes the name node (spec §6.5).
+- **Excalidraw's importer count is 0** because the benchmark gives classic yarn an empty workspace. A real plan reads the members' `package.json` files.
