@@ -3,6 +3,8 @@
 // and `link:<dir>` for workspace links (whose files are already `f:` nodes). Formats this module
 // cannot read are reported as unparseable, which escalates to L3 (§3.5) instead of guessing.
 
+import type { Lockfile } from './lockfile.ts';
+
 export interface LockedPackage {
   readonly location: string;
   readonly name: string;
@@ -97,25 +99,42 @@ export function parseNpmLockfile(text: string): NpmLockfile | Unparseable {
   return new NpmLockfile(packages, declared);
 }
 
-/** Install locations that appeared, changed hash or disappeared between two lockfiles. */
-export function diffLockfiles(before: NpmLockfile, after: NpmLockfile): { added: string[]; changed: string[]; removed: string[] } {
-  const added: string[] = [];
-  const changed: string[] = [];
-  const removed: string[] = [];
-  for (const [location, pkg] of after.packages) {
-    const old = before.packages.get(location);
-    if (old === undefined) {
-      added.push(location);
-    } else if (old.hash !== pkg.hash) {
-      changed.push(location);
-    }
+const NPM = 'p:npm:';
+
+/**
+ * An npm lockfile as the one `Lockfile` interface (spec 2026-11-15-pnpm-yarn-lockfiles §8.1). Its
+ * nodes are the install locations with their hashes and the ⊥ node of every name some package
+ * declares but nothing installs, exactly what the builder has always added.
+ */
+export function npmLockfile(parsed: NpmLockfile, path: string): Lockfile {
+  const nodes = new Map<string, string | null>();
+  const edges = new Map<string, readonly string[]>();
+  for (const [location, pkg] of parsed.packages) {
+    nodes.set(NPM + location, pkg.hash);
   }
-  for (const location of before.packages.keys()) {
-    if (!after.packages.has(location)) {
-      removed.push(location);
+  for (const location of parsed.packages.keys()) {
+    const { resolved, missing } = parsed.dependencies(location);
+    const out = new Set<string>(resolved.map((dependency) => NPM + dependency));
+    for (const name of missing) {
+      const key = `${NPM}node_modules/${name}`;
+      out.add(key);
+      if (!nodes.has(key)) {
+        nodes.set(key, null);
+      }
     }
+    edges.set(NPM + location, Object.freeze([...out].sort(compareStrings)));
   }
-  return { added, changed, removed };
+  return {
+    kind: 'npm',
+    path,
+    nodes,
+    hash: (key) => nodes.get(key),
+    dependencies: (key) => edges.get(key) ?? [],
+    locate: (name, dir) => {
+      const location = parsed.locate(name, dir);
+      return location === null ? null : NPM + location;
+    },
+  };
 }
 
 const LOCKFILES: readonly (readonly [string, Unparseable['format']])[] = [
@@ -130,9 +149,9 @@ const LOCKFILES: readonly (readonly [string, Unparseable['format']])[] = [
 /** Every root lockfile name `detectLockfile` knows. */
 export const LOCKFILE_PATHS: readonly string[] = LOCKFILES.map(([path]) => path);
 
-export type DetectedLockfile = { readonly kind: 'npm'; readonly path: string } | (Unparseable & { readonly path: string }) | { readonly kind: 'none' };
+export type DetectedLockfile = { readonly kind: 'npm' | 'pnpm' | 'yarn'; readonly path: string } | (Unparseable & { readonly path: string }) | { readonly kind: 'none' };
 
-/** Which root lockfile the install uses. Only npm's is parsed; others, or several kinds at once, are unparseable. */
+/** Which root lockfile the install uses. npm's, pnpm's and yarn's are read; bun's, or several kinds at once, are unparseable. */
 export function detectLockfile(rootFiles: ReadonlySet<string>): DetectedLockfile {
   const present = LOCKFILES.filter(([path]) => rootFiles.has(path));
   if (present.length === 0) {
@@ -144,10 +163,10 @@ export function detectLockfile(rootFiles: ReadonlySet<string>): DetectedLockfile
     const names = present.map(([p]) => p).sort(compareStrings);
     return { kind: 'unparseable', format: 'unknown', path: names[0]!, reason: `more than one lockfile: ${names.join(', ')}` };
   }
-  if (format === 'npm') {
-    return { kind: 'npm', path };
+  if (format === 'npm' || format === 'pnpm' || format === 'yarn') {
+    return { kind: format, path };
   }
-  return { kind: 'unparseable', format, path, reason: `${format} lockfiles are not parsed yet` };
+  return { kind: 'unparseable', format, path, reason: `${format} lockfiles are not parsed` };
 }
 
 /** node_modules directories Node searches from `dir`, nearest first (never `node_modules/node_modules`). */

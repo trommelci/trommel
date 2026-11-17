@@ -30,7 +30,7 @@
   - a name node is `p:pnpm:<name>@*` or `p:yarn:<name>@*`;
   - pnpm's own document is `p:pnpm:#env`.
 - **Engine and golden hashes:** the engine stays `trommel-static-3` through Task 8, and neither golden hash (`test/graph/golden.test.ts`, `test/smap/golden.test.ts`) may move until then. Task 9 makes the engine `trommel-static-4` and moves both hashes by the engine id alone.
-- **Tests:** tests come first. Property tests are seeded (`TROMMEL_FC_SEED`, default `20261116`). After each test file passes, mutate the code by hand to prove the tests can fail, and note the mutants for DECISIONS 37 or 37.
+- **Tests:** tests come first. Property tests are seeded (`TROMMEL_FC_SEED`, default `20261116`). After each test file passes, mutate the code by hand to prove the tests can fail, and note the mutants for DECISIONS 36 or 37.
 - **Commits:** small and conventional, made with `git commit -s`, each ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Ask Ojas first** before the first push, any merge, downloading the five samples again (spec §9.5) and cloning corpus repositories (spec §9.4). Never force-push.
 - **Commands:** one test file with `npm test -- <path>`. The whole suite with `npm test`, plus `npm run lint`, `npm run typecheck` and `npm run check:deps`.

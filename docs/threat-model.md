@@ -68,7 +68,7 @@
 | Fixtures, snapshots, `readdir`, `existsSync` misses | Worker fs hooks to `f:`, `d:` and ⊥ nodes (Vitest's own recorder skips fs reads, verified) |
 | Child processes and worker threads | `autoAttachSubprocess` (Vitest v8 option) or the test is flagged unprovable and always runs |
 | Generated or untracked files (codegen, `dist/`) | `generated` rules map outputs to inputs; unmapped means the test always runs |
-| Lockfile bumps | Per-package `p:` nodes per install location; unparseable means L3 |
+| Lockfile bumps | Per-package `p:` nodes: by install location for npm; for pnpm and yarn, by resolved entry, plus a lookup for each name a workspace package declares and a name node for the rest. Each node's hash covers its outgoing edges ([DECISIONS 37](../DECISIONS.md)). A pull request controls its lockfile, so a reader refuses what it cannot fully read, and returns a refusal rather than throwing. That includes YAML nesting past 64 levels and ids that would collide with other nodes. A changed lockfile that cannot be read means L3. Known gaps that can skip a test (second-order hoisting moves, classic yarn's peers, phantom dependencies) are listed in [HANDOFF.md](../HANDOFF.md) §11 |
 | Global setup, `.env`, runner config | Global nodes hit all tests (L2) |
 | Environment drift (Node version, OS, TZ, matrix cell, env vars) | Env fingerprint components; a mismatch means no proof |
 | Test file itself changed, or a new test | In its own closure; new tests always run |

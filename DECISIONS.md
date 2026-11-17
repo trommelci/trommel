@@ -871,3 +871,108 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - The soundness mutants of the model are the three that matter: an entry hash that drops its dependencies, a name-node hash that drops its dependents, and a `locate` that walks up to an ancestor importer.
     - **The whole-branch review's two fixes add 10 more, all caught by this branch's tests.** Five are for the block limit: removed, off by one either way, the wrong line, a limit of 2,000. Five are for the root-lookup rule: removed from `hash()`, removed from `dependencies()`, applied to unknown names, known only through a declaration, and applied to non-root lookups.
   - **Not done here:** nothing calls the readers, so no plan changes. Corpus lockfiles (spec 9.4) and the replay of this repository's commits are the cut-over's evidence.
+
+## 37. pnpm and yarn lockfiles are parsed: the cut-over (2026-11-16)
+
+- **Context.** Entry 36 built the three readers with no caller. This is the second pull request of the design ([docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md](docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md) §10): one lockfile interface for the builder, the planner and `trommel diff`, SMAP's new lockfile kinds, and the engine `trommel-static-4`. Until now any change to a pnpm or yarn lockfile ran every test (L3). It finishes the first item of [HANDOFF.md](HANDOFF.md) §8, except the corpus check, which waits on Ojas (below).
+- **Decision.**
+  - **One interface for every lockfile** (spec §8.1). The builder, the planner and `trommel diff` ask a `Lockfile` for its `nodes`, a node's `hash` and `dependencies`, and where a bare import goes (`locate`). They no longer ask which format they have. A lockfile state is `parsed`, `unparseable` or `none`.
+    - npm is adapted with no change to its nodes or edges (`npmLockfile`). That includes the ⊥ nodes of names a package declares and npm did not install.
+  - **Detection.** `detectLockfile` now reports `pnpm-lock.yaml` and `yarn.lock` as lockfiles to read. A `yarn.lock` whose text holds `# yarn lockfile v1` is classic; any other is Berry.
+    - What a reader refuses (entry 36) is `unparseable` as before, so a change to it is still L3. That covers pnpm before 9.0 and Berry before 8. bun stays unparseable, now with the reason "bun lockfiles are not parsed", and so does more than one lockfile.
+  - **Classic yarn's workspace** is read from the snapshot:
+    - The importers are the root and the members `Resolver.workspaces()` finds. Each declares the names in the `dependencies`, `devDependencies` and `optionalDependencies` of its own `package.json`. When two fields name one package, the later field wins.
+    - A member whose `package.json` cannot be read, or has a dependency field that is not an object, makes the lockfile unparseable: "<dir>/package.json cannot be read".
+  - **The builder** adds every node and edge of the lockfile, whatever its kind (spec §8.2). A bare import goes where `locate` says (spec §6.4):
+    - the lookup of the file's own workspace package, when that package declares the name;
+    - else the name's name node, added with its hash and edges the first time a file uses it;
+    - else today's ⊥ node, and the file is uncertain.
+
+    `map.lockfile` is `{kind, path}`, and `trommel graph` prints it so.
+  - **SMAP** (spec §8.4, [docs/smap-format.md](docs/smap-format.md) §4.1 and §4.4).
+    - `META` gains lockfile kinds 3 (pnpm), 4 (yarn Berry) and 5 (classic yarn), each followed by the lockfile's path. Kinds 0 to 2 keep their bytes, and the format number stays 0.
+    - Entry, name-node and `#env` hashes are SHA-256, form 1. A lookup's hash is text, form 2: the entry id, `link:<dir>`, or `<name>@*` when its reference is unresolved.
+  - **The engine is `trommel-static-4`** (spec §8.6). Maps of pnpm and yarn repositories have new nodes, and the engine id, not the format number, keeps old planners and new maps apart. Both golden hashes moved with the engine id and with nothing else:
+    - the fixture's canonical JSON, from `d648c838…806811` to `e66292fe…03739d`. A diff of the two texts differs only in `engine`;
+    - `golden.smap` is still 3,779 bytes. It changed at byte 28, the last character of the engine id, and in its 32-byte trailer.
+  - **The planner compares hashes, with no new rule per format** (spec §8.3):
+    - **Recomputed nodes.** Every `p:` key of the map is recomputed from the head lockfile's `hash(key)`, else ⊥. That covers lookups, entries, name nodes and `#env` alike (ruling R6). Recomputing only `p:npm:` keys would miss a bump that moves only an entry or a name node.
+    - **npm's shadow rule stays npm's** (spec §6.3). It runs only when the head lockfile is npm's. pnpm and yarn lookups are `p:npm:` keys too, and without the guard a member's new lookup of typescript would mark the root's lookup changed and escalate the root.
+    - **A lockfile that changes kind or path is L3.** The cause names both sides as `<kind> <path>` (ruling R7), so a move from Berry to classic, or from yarn to pnpm, runs everything once. A pnpm or yarn lockfile that was deleted is L3 too.
+    - **Ruling R8:** a map whose lockfile was unparseable, against a head where the same path now parses, is L3, for npm too. Before, the two sides had the same path and the plan went on. It follows spec §8.3, since the kind changed, and it costs one run-all plan when a lockfile first becomes readable.
+    - **One npm cause string changed.** "the lockfile changed from package-lock.json to npm-shrinkwrap.json" now reads "the lockfile changed from npm package-lock.json to npm npm-shrinkwrap.json". Levels, selections and why-paths are unchanged.
+    - **`inputs.ignore`** matches an entry or a name node as `node_modules/<name>`, the pattern that already matches its lookup at the root, and `p:pnpm:#env` as `pnpm-lock.yaml`. So ignoring an eslint bump stays one pattern.
+    - **pnpm's own document** is a changed node that no test reaches, so a change to it escalates the root (L1, entry 29), as spec §6.8 says.
+  - **`trommel diff`** gives the `p:` keys added, changed and removed between two parsed lockfiles of one kind (`diffLockfiles`, spec §8.5). A ⊥ hash is a hash like any other, and each list is sorted.
+    - Between kinds, or when either side is not parsed, it gives each side as `<kind> <path>`, `<path> (unparseable: <reason>)` or `none`, and "package changes are only computed between two lockfiles of one kind".
+    - **For npm the output changes.** Keys carry their `p:npm:` prefix, and the ⊥ nodes of missing names are listed. Before, the lists held install locations without the prefix, and only installed ones.
+  - **The soundness property of spec §9.2** is `test/select/lockfile-soundness.test.ts`, with its generator and oracle in `test/select/install-tree.ts`.
+    - **The generator.** A universe of five names, each at two versions with up to two dependencies; in Berry, a third of the versions have one peer. Three importers declare random versions, and three tests import one to three names. H is S after one or two edits: a declaration bumped, added or removed, a dependency re-pointed, a second version brought in, or a package re-published with new content.
+    - **Four layouts,** 700 runs each: pnpm's isolated layout, Berry's `node-modules`, Berry's Plug'n'Play, and classic yarn hoisted. A small hoister in the test places the hoisted installs, and writers write each install's lockfile and `package.json` files. In the generated pnpm and Berry repositories a declaration lives in the lockfile alone, so every edit is lockfile-only.
+    - **The oracle** walks the placed install as Node does, or as Plug'n'Play does, and gives the (entry, content) pairs each test loads. It never reads a lockfile and never calls `locate`, so a wrong lookup shows as a miss.
+    - **The assertion:** every test whose loads differ is selected, except the two residual cases of spec §6.4 (below), which are counted. Two checks keep a run from passing vacuously: S's map records the expected lockfile kind, and the plan has no L3.
+  - **The known gaps,** each in [HANDOFF.md](HANDOFF.md) §11:
+    - **Second-order hoisting moves** (spec §6.4). Hoisting can move a copy for a reason two or more steps away. Then a file can load another copy of a name its own workspace package does not declare, or an unmet Berry peer found by position can reach another copy, while no input of that name's node changes (ruling R9). M2's records, which see the file a test loaded, close both.
+    - **Classic yarn's peers** (spec §6.7). The lockfile does not record them, so they are not edges.
+    - **Phantom dependencies,** found by the whole-branch review and not yet decided (HANDOFF §10 item 17). A package that requires a name it does not declare, and finds it by hoisting or through pnpm's `.pnpm/node_modules`, has no edge to it. npm has the same gap, and M2's records close it.
+    - **The name node's precision cost** (spec §6.4, "What case 2 costs"). On a pnpm monorepo whose tests import a root-declared vitest, a bump of a `@vitest/*` package reruns those tests. Reading pnpm's `node-linker` would win it back (spec §11).
+  - **Rulings R9, R10 and R11, awaiting Ojas's confirmation.** They change which misses the property tolerates. They were made during the build, within his decision that second-order hoisting moves are a known gap (spec §12).
+    - **R9:** the property first failed on Berry's `node-modules` layout, 0 to 3 times in 700 runs. A workspace edit re-hoisted a package whose peer its parent does not provide, so Node found another copy of the peer by position, and the peer's name node did not change. That is the same mechanism as the residual, so the exemption gained a second case: an unmet Berry peer found by position, with its name node unchanged. Spec §6.4, §6.7 and §9.2 were corrected in `ce741d0`. An exact fix would make the peer depend on the whole hoisting layout, which is approach C of the spec.
+    - **R10:** the test's hoister keeps a peer that the parent provides visible from the package, as Yarn guarantees and spec §6.7 relies on. Without that, seed 2 failed on an install Yarn never writes. Installs with a cycle of provided peers, of any length, cannot be placed and are skipped. That was about 3% of the Berry `node-modules` draws, measured before the review's fix round changed how peers are provided. The review's fix round then modelled all three ways Yarn provides a peer: from a dependency of the parent, from the parent itself, and forwarded from the parent's own peer.
+    - **R11:** one exemption for both cases. A differing item is exempt when every path from the test to it crosses an exempt edge: an import of a name the test's own workspace package declares at neither S nor H, or, in Berry's `node-modules` layout, an unmet peer found by position, each with its name node unchanged. A test exempt only by a mix of the two is counted as "mixed". Seed 8 failed on such a mix before it.
+  - **Two fixes from the whole-branch review** of both branches (`ab745a9..fc350d1`), made on the readers' branch and merged in:
+    - **YAML block nesting is limited to 64 levels** (`BLOCK_DEPTH`, entry 36). A pnpm `resolution` nested 2,000 levels deep, a 4.0 MB file, was read, and `lockfileFromModel` then overflowed the stack hashing it. `trommel plan` caught the error and ran everything, but `trommel graph`, which is the map job on `main`, and `trommel diff` exited 1. Deeper nesting is now a refusal that names its line, so such a lockfile is `unparseable`.
+    - **Case 3's ⊥ node follows the name node once the name is known** (spec §6.4), found by the whole-branch review. A bare import that the resolver also maps to a file, through a root `__mocks__/N` or tsconfig `paths`, is not uncertain, and its edge goes to `p:npm:node_modules/N` with hash ⊥. When N became known at H only through a non-root importer or an entry, that key was none of the head lockfile's nodes, so `hash` gave undefined, the plan read ⊥ again and saw no change. In classic yarn, `bar` (declared by `packages/b`) gaining a dependency on `foo`, while `packages/a` imports `foo` under a root mock, selected only `b.test` and skipped `a.test`, though a hoisted install now puts `foo` at the root. npm's shadow rule selects both. Now `hash` and `dependencies` answer for a root lookup that is not a node with N's name node when the lockfile knows N, as `locate` defines knowing, and as before when it does not.
+  - **Superseded in earlier entries:**
+    - entry 18's "pnpm, yarn … are reported as `unparseable`", and its diff of install locations;
+    - entry 24's "lockfiles that cannot be parsed (pnpm, yarn, bun, npm v1)", which now means bun, npm v1, and pnpm and yarn formats the readers do not know;
+    - entry 36's "no caller".
+- **Evidence.**
+  - **Tests.** 945 pass in 44 files, where entry 36 had 896 in 42. Lint, typecheck and the zero-dependency check are clean.
+    - `plan.test.ts` plans a lockfile-only bump in one workspace package for pnpm, Berry and classic yarn, and it selects that package's tests and not the other's. It also covers a transitive bump, a new copy of a root-declared name, `#env`, a change of yarn flavour, a deleted pnpm or yarn lockfile and an ignored eslint bump. For classic yarn and pnpm, it plans the review's case: a name that case 3 left at ⊥ becomes known at H, and the test that imports it is selected.
+    - `static.test.ts` maps each format, the classic workspace and its refusals; `smap.test.ts` pins each kind's `META` bytes and round-trips each kind; `lockfile.test.ts` and `cli.test.ts` cover the diff.
+  - **The soundness property** passes its 2,800 runs at the default seed, in 6.7 s on the day of the benchmark below. The review, before its fix round, counted 1,905 of the 2,800 runs with no L1 escalation; a run with one proves nothing.
+    - The residual counts, in the form undeclared imports only / unmet peers only / only both:
+
+      | Layout | Default seed, 700 runs | Seeds 1 to 50, 35,000 runs |
+      |---|---|---|
+      | pnpm | 0 / 0 / 0 | 0 / 0 / 0 |
+      | Berry `node-modules` | 3 / 1 / 0 | 134 / 31 / 4 |
+      | Berry Plug'n'Play | 0 / 0 / 0 | 0 / 0 / 0 |
+      | classic yarn | 1 / 0 / 0 | 108 / 0 / 0 |
+
+    - All 51 seeds pass, with no miss of any other kind. In pnpm's isolated layout and Plug'n'Play, which do not hoist, none was counted.
+  - **The four mutants of spec §9.2,** in `model.ts`:
+    - **M1, an entry hash without its dependencies:** the property fails in every layout, at run 6 in pnpm and classic yarn and at run 16 in both Berry layouts.
+    - **M4, a walk up to an ancestor's lookup instead of the name node:** it fails at run 89 in pnpm and at run 22 in both Berry layouts. It passes in classic yarn, because there a declaration lives in the member's `package.json`. Adding or removing a declaration also changes that file, which the test depends on, so the test is selected anyway.
+    - **M2 and M3 cannot fail the property,** as spec §9.2 says. Pointing a file straight at an entry (M2) leaves every lookup with no edge in, so any change to a lookup is a changed node that no test reaches and escalates its package (entry 29). That is sound, so the property sees no miss. A name-node hash without its dependents (M3) is read by the exemption itself, so each miss it causes counts as a residual. 11 example tests catch M2 (three in `plan.test.ts`, three in `static.test.ts`, five in `model.test.ts`), and 8 in `model.test.ts` catch M3.
+  - **27 more hand mutants,** all caught but one whose code is gone:
+    - **2 in npm's adapter.** One survived its first pass and gained a test: the shadow rule counting the ⊥ node of a missing name as a new install location.
+    - **18 in the map, SMAP and detection,** among them the case-2 name node not added, `map.lockfile` always npm, swapped kind bytes, every `yarn.lock` read as Berry, classic importers without the members, and an unreadable `package.json` read as declaring nothing. The eighteenth, `trommel diff` without its npm-only guard, survived; that guard was replaced in the same pull request by the one-kind check, whose removal is caught.
+    - **4 in the planner:** only `p:npm:` keys recomputed, the shadow rule for every format, `describe` without the kind, and an entry's ignore path taken as its full id.
+    - **1 in the test's install:** without the rule that a peer naming the parent is the parent, the two example tests fail, while the property alone exempts the miss as an unmet peer.
+    - **2 in `trommel diff`:** the one-kind check dropped, and a ⊥ hash treated as absent.
+  - **10 mutants of the review's fixes,** all caught.
+    - **5 in the block limit.** Without the limit, the 2,000-level test fails with the `RangeError`. Off by one either way, the opening key's line named instead of the first deeper one, and a limit of 2,000 each fail `yaml.test.ts` or `fuzz.test.ts`.
+    - **5 in the root lookup.** Without the new branch of `hash`, both new plan tests fail, and `model.test.ts` too. Without it in `dependencies`, a root lookup followed whether or not the name is known, a name known only through a declaration, and every lookup followed rather than the root's, each fail `model.test.ts`. The plan tests pass with the `dependencies` mutant, since the plan reads only hashes, and the soundness property passes with the `hash` mutant: its imports of a name the lockfile does not know are uncertain, so they always run.
+  - **This repository's last 70 non-merge commits,** `29f1638` to `3686470`, each planned from a map of its parent by the CLI on `main` at `74ca9b4` and by this one (spec §9.3). On all 70 the tests that would run, the would-skips, the why-path of each affected test and the escalations are identical. Escalations were compared by level, scope and cause, with the kind that R7 adds removed, and no cause needed it. In all: 728 of 2,337 possible test-file runs, 11 commits with an L1 escalation, 1 with an L3 (`trommel.config.json` changed, at `e808651`) and no fallback.
+    - Each of the 70 maps differs from `main`'s only in the last character of the engine id and in the trailer: 3,350,720 bytes for the 70, on both sides.
+  - **The synthetic 10,000-file repository and this one,** measured the same day and on the same machine with `main`'s benchmark and with this one, twice each ([bench/README.md](bench/README.md)). The numbers match within noise. `main`'s own two runs differ by 0.04 s in decoding and 0.21 s in `buildStaticMap`, more than the two builds differ there. For the cold CLI and the select steps, two runs of one build differ by about as much as the two builds do.
+
+    | | Map | CLI cold | `buildStaticMap` | Decode | Select, an edit | Select, a file added |
+    |---|---|---|---|---|---|---|
+    | Synthetic, `main` at `74ca9b4` | 1,110,846 bytes | 2.52 s, 2.54 s | 2.91 s, 3.12 s | 0.14 s, 0.10 s | 0.08 s, 0.07 s | 0.42 s, 0.35 s |
+    | Synthetic, this change | 1,110,846 bytes | 2.55 s, 2.53 s | 2.87 s, 2.92 s | 0.14 s, 0.13 s | 0.06 s, 0.07 s | 0.45 s, 0.37 s |
+    | This repository at `3686470`, `main` | 50,592 bytes | 0.53 s, 0.54 s | 0.11 s, 0.12 s | — | — | — |
+    | This repository at `3686470`, this change | 50,592 bytes | 0.55 s, 0.54 s | 0.10 s, 0.11 s | — | — | — |
+
+    - Both builds give 20,107 nodes and 145,041 edges at 10,000 files, and 552 nodes and 1,286 edges here.
+    - The machine was slower than for entry 34, on both sides: the cold CLI took 2.5 s where it took 1.8 s on 2026-11-15. So these rows compare only with each other.
+- **Not done.**
+  - **The corpus check of spec §9.4. Not done yet: it needs Ojas's approval to clone `honojs/hono` and `excalidraw/excalidraw`.** On each:
+    - read every version of the lockfile from the last 12 months, and count and explain each refusal;
+    - plan every lockfile-only commit, and count the plans by outcome: a subset selected, L1 at the root with the package that caused it, or anything else.
+
+    Done means no lockfile-only commit escalates to L3 because its lockfile cannot be read, the why-paths of selected tests name the changed packages, and the commits that end in L1 at the root are counted with their causes (spec §9.6). Under entry 29 many will still be L1, for bumps of tools that no test imports; the counts set up the replay's `inputs.ignore`.
+  - **Not yet seen in CI.** Expect one run-all plan on each branch until a push to `main` caches a `trommel-static-4` map. The cause is "the map at .trommel/map/map.smap is invalid: the map was built by engine "trommel-static-3", expected trommel-static-4".
+  - **No byte check on a second system before CI.** Only the engine id moved in the golden files, and CI runs both golden pins on Ubuntu and Windows.

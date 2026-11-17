@@ -2,7 +2,7 @@
 
 - **Status:** approved 2026-11-11.
 - **Plan:** selection-first, 10 milestones in order. A milestone has a scope and exit criteria, and no dates or commit budget: it is done when its exit criteria are met (DECISIONS 31).
-- **Progress:** M1 is under way, and its first ten steps (§4) are done. Resolution hubs are built (DECISIONS 32), and so is SMAP v0, which is the map on disk (DECISIONS 33 and 34). Left in M1: pnpm and yarn lockfiles, `trommel explain`, golden graphs for 6 repositories, and the incremental T6 timing. [HANDOFF.md](../HANDOFF.md) §8 has the detail. M2–M10 have not started.
+- **Progress:** M1 is under way, and its first ten steps (§4) are done. Resolution hubs are built (DECISIONS 32), and so is SMAP v0, which is the map on disk (DECISIONS 33 and 34). pnpm and yarn lockfiles are parsed and planned (DECISIONS 36 and 37), with their corpus check waiting on approval to clone. Left in M1: that corpus check, `trommel explain`, golden graphs for 6 repositories, and the incremental T6 timing. [HANDOFF.md](../HANDOFF.md) §8 has the detail. M2–M10 have not started.
 - **Related:** [architecture.md](architecture.md), [../bench/TARGETS.md](../bench/TARGETS.md), [adr/](adr/README.md).
 
 ## 1. Milestones

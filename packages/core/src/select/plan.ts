@@ -22,6 +22,7 @@ import type { ObjectFormat } from '../git/git.ts';
 import { forwardReach, reverseReach, whyPath, type Graph } from '../graph/graph.ts';
 import { mapGraph, mapIndex } from '../graph/map.ts';
 import { globHash, hubHash, isHub, isModule, readLockfile, type LockfileState, type MapLockfile, type TrommelMap } from '../graph/static.ts';
+import { nameOfId } from '../lockfile/model.ts';
 import { LOCKFILE_PATHS } from '../lockfile/npm.ts';
 import { matchGlobs } from '../resolve/glob.ts';
 import { Resolver, type Vfs } from '../resolve/resolver.ts';
@@ -206,6 +207,13 @@ function pathOf(key: string): string | null {
   if (key.startsWith('f:') || key.startsWith('d:') || key.startsWith('u:') || isHub(key)) {
     return key.slice(2);
   }
+  if (key === 'p:pnpm:#env') {
+    return 'pnpm-lock.yaml';
+  }
+  // An entry and a name node are one package to `inputs.ignore`, as its lookup location at the root is.
+  if (key.startsWith('p:pnpm:') || key.startsWith('p:yarn:')) {
+    return `node_modules/${nameOfId(key.slice('p:pnpm:'.length))}`;
+  }
   return key.startsWith('p:npm:') ? key.slice('p:npm:'.length) : null;
 }
 
@@ -289,13 +297,18 @@ function unparseableLockfileChange(before: MapLockfile, after: LockfileState, fi
 }
 
 function describe(lockfile: MapLockfile | LockfileState): string {
-  return lockfile.kind === 'npm' ? lockfile.path : lockfile.kind === 'unparseable' ? lockfile.paths.join(', ') : 'none';
+  if (lockfile.kind === 'unparseable') {
+    return lockfile.paths.join(', ');
+  }
+  if (lockfile.kind === 'none') {
+    return 'none';
+  }
+  return lockfile.kind === 'parsed' ? `${lockfile.lockfile.kind} ${lockfile.lockfile.path}` : `${lockfile.kind} ${lockfile.path}`;
 }
 
-/** g: and p: nodes whose hash at H differs from the map's. */
+/** g: and p: nodes whose hash at H differs from the map's; every p: key is recomputed, whatever the lockfile (§8.3). */
 function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileState, resolver: Resolver): string[] {
   const changed: string[] = [];
-  const packages = lockfile.kind === 'npm' ? lockfile.lockfile.packages : new Map<string, { hash: string }>();
   let files: readonly string[] | null = null;
   for (const [key, hash] of Object.entries(map.nodes)) {
     let now: string | null | undefined;
@@ -305,8 +318,8 @@ function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileS
       const patterns = map.globs[key];
       files ??= head.vfs.files();
       now = patterns === undefined ? undefined : globHash(matchGlobs(files, patterns));
-    } else if (key.startsWith('p:npm:')) {
-      now = packages.get(key.slice('p:npm:'.length))?.hash ?? null;
+    } else if (key.startsWith('p:')) {
+      now = lockfile.kind === 'parsed' ? (lockfile.lockfile.hash(key) ?? null) : null;
     } else {
       continue;
     }
@@ -317,9 +330,12 @@ function recomputedChanges(map: TrommelMap, head: HeadState, lockfile: LockfileS
   // A new install location can shadow another copy of the same package for some importers, so it
   // changes every copy of that name in the map.
   const added = new Set<string>();
-  for (const location of packages.keys()) {
-    if (!Object.hasOwn(map.nodes, `p:npm:${location}`)) {
-      added.add(packageName(location));
+  if (lockfile.kind === 'parsed' && lockfile.lockfile.kind === 'npm') {
+    // Only installed locations count: the ⊥ node of a missing name is no install location.
+    for (const [key, hash] of lockfile.lockfile.nodes) {
+      if (hash !== null && key.startsWith('p:npm:') && !Object.hasOwn(map.nodes, key)) {
+        added.add(packageName(key));
+      }
     }
   }
   if (added.size > 0) {
