@@ -140,7 +140,7 @@ Applied to lookup locations, npm's rule would mark the root's lookup of, say, ty
 From a file in directory D, for the name N, the file's own importer W is the deepest importer whose directory is D or contains D. Then:
 1. **W declares N:** the file gets an edge to the lookup location `<W>/node_modules/N`. This is exact in every layout.
 2. **W does not, but the lockfile knows N** (an importer declares it, or an entry has that name): the file gets an edge to N's name node (Ojas, 2026-11-15).
-3. **Otherwise:** the file gets an edge to `p:npm:node_modules/N` with hash ⊥, and is uncertain ("N is not in pnpm-lock.yaml"), as with npm today. A file that also resolves N to a file of the repository, through a root `__mocks__/N` or tsconfig `paths`, is not uncertain, and the edge alone carries a change. So when the lockfile later learns N, the ⊥ node's hash there becomes N's name node (or the root's lookup, if the root declares N), and the change is seen (found by the whole-branch review, DECISIONS 37).
+3. **Otherwise:** the file gets an edge to `p:npm:node_modules/N` with hash ⊥, and is uncertain ("N is not in pnpm-lock.yaml"), as with npm today. A file that also resolves N to a file of the repository, through a root `__mocks__/N` or tsconfig `paths`, is not uncertain, and the edge alone carries a change. So when the lockfile later learns N, the ⊥ node's hash there becomes N's name node (or the root's lookup, if the root declares N), and the change is seen (found by the whole-branch review; DECISIONS 36 records the rule, and 37 the planner's use of it).
 
 Importers are:
 - **pnpm:** the keys of `importers`, with their `dependencies`, `devDependencies` and `optionalDependencies`;
