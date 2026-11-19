@@ -120,7 +120,7 @@ export function summaryOf(report: PlanReport): string {
     lines.push('', `### Also run (${forced.length})`, '');
     for (const { test, reason, path } of forced.slice(0, MAX_LISTED)) {
       // An L1 test from another package: show the dependencies that lead into the escalated one.
-      const through = path === undefined || path.length < 2 ? '' : `, through ${readable(path).slice(1).map(shown).join(' → ')}`;
+      const through = path === undefined || path.length < 2 ? '' : `, through ${readable(path).slice(1).map((node) => shown(node)).join(' → ')}`;
       lines.push(`- \`${test}\`: ${reason}${through}`);
     }
   }
@@ -163,17 +163,17 @@ function whyPath(path: readonly string[], uncertain: PlanReport['uncertain']): s
  * A path without the resolution hubs between two files, which only say that one imports the other
  * (the plan JSON keeps them). A hub at the end stays: it is what changed.
  */
-function readable(path: readonly string[]): readonly string[] {
+export function readable(path: readonly string[]): readonly string[] {
   return path.filter((node, i) => i === path.length - 1 || !(node.startsWith('r:') || node.startsWith('c:')));
 }
 
 /** A node as the summary shows it: a file by its path, a hub by what it stands for, anything else by its key. */
-function shown(node: string): string {
+export function shown(node: string, quote = '`'): string {
   if (node.startsWith('r:')) {
-    return `resolution of \`${node.slice(2)}\``;
+    return `resolution of ${quote}${node.slice(2)}${quote}`;
   }
   if (node.startsWith('c:')) {
-    return `configs of \`${node === 'c:' ? '.' : node.slice(2)}\``;
+    return `configs of ${quote}${node === 'c:' ? '.' : node.slice(2)}${quote}`;
   }
-  return `\`${node.startsWith('f:') ? node.slice(2) : node}\``;
+  return `${quote}${node.startsWith('f:') ? node.slice(2) : node}${quote}`;
 }

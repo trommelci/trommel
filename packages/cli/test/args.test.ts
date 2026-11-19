@@ -22,6 +22,15 @@ describe('parseCommand', () => {
     expect(parseCommand(['plan', '--static', '--shards', '4', '--head', 'abc'])).toEqual({ ...plan, mode: null, shards: 4, head: 'abc' });
   });
 
+  it('reads explain with one test, and its options', () => {
+    const explain = { name: 'explain', test: 'test/a.test.ts', to: null, map: '.trommel/map', head: 'HEAD', json: false };
+    expect(parseCommand(['explain', 'test/a.test.ts'])).toEqual(explain);
+    expect(parseCommand(['explain', 'test/a.test.ts', '--to', 'x', '--map', 'm', '--head', 'h', '--json'])).toEqual({ ...explain, to: 'x', map: 'm', head: 'h', json: true });
+    for (const argv of [['explain'], ['explain', 'a', 'b']]) {
+      expect(() => parseCommand(argv)).toThrow(new UsageError('explain takes one test file: trommel explain <test>'));
+    }
+  });
+
   it.each([
     [['plan', '--shadow', '--mode', 'safe', '--static'], /--shadow and --mode safe/],
     [['plan', '--mode', 'fast', '--static'], /--mode must be safe, shadow or budget/],

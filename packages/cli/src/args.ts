@@ -8,6 +8,7 @@ export type Command =
   | { readonly name: 'version' }
   | { readonly name: 'graph'; readonly rev: string; readonly out: string | null }
   | { readonly name: 'diff'; readonly base: string; readonly head: string }
+  | { readonly name: 'explain'; readonly test: string; readonly to: string | null; readonly map: string; readonly head: string; readonly json: boolean }
   | { readonly name: 'plan'; readonly mode: Mode | null; readonly static: boolean; readonly map: string; readonly head: string; readonly shards: number | null };
 
 export class UsageError extends Error {
@@ -34,6 +35,12 @@ Commands:
 
       M1 has no test records, so no skip can be proven safe: every would-skip is unproven static
       reachability, --static runs in shadow mode only, and shadow mode runs every test.
+
+  explain <test> [--to <file|node>] [--map <dir>] [--head <rev>] [--json]
+      Explain what the static plan decides for one test file, and why: every changed or
+      uncertain node it reaches, with a path to each, or why it is forced or would be
+      skipped. --to prints the test's path to a file or a map node. --json prints the
+      explanation as canonical JSON. Paths are relative to the current directory.
 
 Options:
   -h, --help     Show this help (or a command's)
@@ -102,6 +109,18 @@ export function parseCommand(argv: readonly string[]): Command {
         head: values.head ?? 'HEAD',
         shards,
       };
+    }
+    case 'explain': {
+      const { values, positionals } = parse(rest, {
+        to: { type: 'string' },
+        map: { type: 'string' },
+        head: { type: 'string' },
+        json: { type: 'boolean' },
+      });
+      if (positionals.length !== 1) {
+        throw new UsageError('explain takes one test file: trommel explain <test>');
+      }
+      return { name: 'explain', test: positionals[0]!, to: values.to ?? null, map: values.map ?? '.trommel/map', head: values.head ?? 'HEAD', json: values.json === true };
     }
     default:
       throw new UsageError(`unknown command ${JSON.stringify(name)}`);
