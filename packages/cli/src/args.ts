@@ -43,8 +43,10 @@ Commands:
   explain <test> [--to <file|node>] [--map <dir>] [--head <rev>] [--json]
       Explain what the static plan decides for one test file, and why: every changed or
       uncertain node it reaches, with a path to each, or why it is forced or would be
-      skipped. --to prints the test's path to a file or a map node. --json prints the
-      explanation as canonical JSON. Paths are relative to the current directory.
+      skipped. The plan is from <dir>/map.smap (default .trommel/map under the repository
+      root) to <head> (default HEAD). --to prints the test's path to a file or a map node;
+      name a directory as a node, d:<dir>. --json prints the explanation as canonical JSON.
+      The test, a --to file and a --map given are relative to the current directory.
 
 Options:
   -h, --help     Show this help (or a command's)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseCommand, planMode, UsageError } from '../src/args.ts';
+import { parseCommand, planMode, USAGE, UsageError } from '../src/args.ts';
 
 describe('parseCommand', () => {
   it('reads graph with its defaults and options', () => {
@@ -68,5 +68,14 @@ describe('planMode', () => {
   it('refuses budget mode and plans without --static, which need records', () => {
     expect(() => planMode({ mode: 'budget', static: true }, undefined)).toThrow(/budget/);
     expect(() => planMode({ mode: 'shadow', static: false }, undefined)).toThrow(/needs --static/);
+  });
+});
+
+describe('USAGE', () => {
+  it("gives explain's defaults, and how to name a directory", () => {
+    const explain = USAGE.slice(USAGE.indexOf('  explain <test>'), USAGE.indexOf('Options:')).replace(/\s+/g, ' ');
+    expect(explain).toContain('(default .trommel/map under the repository root)');
+    expect(explain).toContain('(default HEAD)');
+    expect(explain).toContain('d:<dir>');
   });
 });
