@@ -15,6 +15,7 @@ export { detectLockfile, LOCKFILE_PATHS, NpmLockfile, npmLockfile, parseNpmLockf
 export { buildStaticMap, ENGINE, fileHash, globHash, hubHash, isHub, isLexed, isModule, listingHash, MAP_VERSION, readLockfile, sha256, type DeclaredRule, type LockfileState, type MapLockfile, type TrommelMap, type StaticInput } from './graph/static.ts';
 export { MapError, mapGraph, mapIndex } from './graph/map.ts';
 export { CONFIG_PATH, runAll, selectStatic, type Escalation, type HeadState, type PlanRules, type Selection } from './select/plan.ts';
+export { explainTest, type ExplainContext, type Explanation, type SeedPath, type Target, type Verdict } from './select/explain.ts';
 export { SmapEncodeError } from './smap/bytes.ts';
 export { decodeContainer, encodeContainer, FORMAT, layerAddress, SNAPSHOT_LAYER, STATIC_LAYER, type Container, type Section } from './smap/container.ts';
 export { decodeSmap, encodeSmap, type Smap } from './smap/smap.ts';
