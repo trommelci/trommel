@@ -82,7 +82,7 @@
 
 **First four things to do:**
 1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 4 of its worklist are done. M2 is item 5, and the rest of M1 is in §8.
-2. Check that the daily collector runs still succeed (§5.3). The backlog cleared on 2026-11-19, so a manifest's `pending` should stay empty.
+2. Check that the daily collector runs still succeed (§5.3). The backlog is clear as of 2026-11-19, so a manifest's `pending` should stay empty, and lexical's one day in error, 2026-11-15, should be collected again.
 3. Start the rest of M1 (§8), in the order §1.1 gives. Every PR now shows Trommel's shadow summary: read it, and record any would-skip that should have run. `trommel explain <test> --to <file>` shows whether the map links the two.
 4. Take the open decisions to Ojas (§10).
 
@@ -320,16 +320,16 @@ gh api repos/trommelci/trommel-corpus/contents/manifests/2026 --jq '.[].name'
 
 **The backlog is cleared (2026-11-19).** Checked with `gh` on 2026-11-19:
 - Run 10, [44517265831](https://github.com/trommelci/trommel-corpus/actions/runs/44517265831), published manifest `manifests/2026/2026-11-19-10.json`. It ended with nothing pending and was not stopped early (`stoppedEarly: null`).
-- 24 of the 25 repositories have all 87 days, and facebook/lexical has 86.
+- 24 of the 25 repositories have all 87 days. facebook/lexical has 86: its `backfill` item for 2026-11-15 has status `error`, with the text "GET https://api.github.com/repos/facebook/lexical/actions/artifacts/14178703494/zip returned 301: expected a redirect to the archive". Every other lexical day is complete. The next run retries it, as run 4 did for es-toolkit's error. Whether the 301 recurs is not known yet.
 - Every daily run from 2026-11-15 succeeded: [43706429525](https://github.com/trommelci/trommel-corpus/actions/runs/43706429525) (2026-11-15), [43857086425](https://github.com/trommelci/trommel-corpus/actions/runs/43857086425) (2026-11-16), [44078135584](https://github.com/trommelci/trommel-corpus/actions/runs/44078135584) (2026-11-17), [44297378822](https://github.com/trommelci/trommel-corpus/actions/runs/44297378822) (2026-11-18) and run 10.
-- That is eight days after the first run, faster than the 2–3 weeks estimated above. The table stops at run 5: runs 6 to 9 were not tabulated.
+- The backlog was clear by run 10, eight days after the first run, faster than the 2–3 weeks estimated above. The table stops at run 5: runs 6 to 9 were not tabulated.
 
 **If the run failed or published nothing:**
 1. Read the log: `gh run view 43026895799 --repo trommelci/trommel-corpus --log-failed`.
 2. Fix the collector on a branch in this repository and merge it (with approval).
 3. Re-run with `gh workflow run collect.yml --repo trommelci/trommel-corpus`. It picks up `main` as it now stands; nothing needs pushing to trommel-corpus.
 
-Watch for one risk: if publishing runs past the 350-minute job timeout, the whole run's output is lost. If that happens, lower `max_minutes`.
+Watch for two risks. If publishing runs past the 350-minute job timeout, the whole run's output is lost; if that happens, lower `max_minutes`. If lexical's 301 recurs, the collector needs to follow a 301 on artifact downloads.
 
 ### 5.4 Operating it locally
 
@@ -563,7 +563,7 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
   - ADR-0021 now states the cache trust model: a fork or an untrusted author cannot replace the map. Its key layout, `cache-mode` and origin check are M3 work; `trommel.yml` still saves `trommel-map-<sha>` and restores by prefix.
   - The shards run exactly the plan's list, which comes from Trommel's own discovery. A test that Vitest would run and Trommel does not find runs only in `ci.yml`. Keep `ci.yml` required until `trommel run` reconciles with the runner (ADR-0004).
   - A directory named by `new URL(…, import.meta.url)` depends on every file below it (DECISIONS 26). In a global input, a URL that names the repository root would select every test on any change, so this repository uses `import.meta.dirname`.
-- **Collector.** See §5.4. The backlog cleared with run 10 on 2026-11-19 (§5.3): 24 of the 25 repositories have all 87 days, and facebook/lexical has 86.
+- **Collector.** See §5.4. The backlog is clear as of run 10 on 2026-11-19 (§5.3): 24 of the 25 repositories have all 87 days, and facebook/lexical has 86, its 2026-11-15 item in error after an artifact download returned 301.
 - **Found by the foundation review and not fixed** (its M6 and L2; DECISIONS 27; L1 is fixed by DECISIONS 29 and L3 by DECISIONS 32):
   - An import of a `.vue` or `.svelte` file is a plain target: that file's own imports are not followed, and nothing is flagged.
   - A `file:` link dependency outside the workspace list gets a `p:` node with a constant hash and no edge to its sources.
