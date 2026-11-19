@@ -180,12 +180,15 @@ describe('explainTest', () => {
           }
           const expected = [...seeds].filter((key) => closure[graph.id(key)!] === 1).sort();
           expect(explanation.seeds!.map((x) => x.node)).toEqual(expected);
+          const tree = forwardTree(graph, graph.id(`f:${test}`)!);
           for (const seed of explanation.seeds!) {
             expect(seed.path[0]).toBe(`f:${test}`);
             expect(seed.path.at(-1)).toBe(seed.node);
             for (let i = 1; i < seed.path.length; i++) {
               expect(Object.hasOwn(map.edges[seed.path[i - 1]!] ?? {}, seed.path[i]!), `${seed.path[i - 1]} -> ${seed.path[i]}`).toBe(true);
             }
+            // Shortest: as many edges as the seed's distance from the test.
+            expect(seed.path.length - 1, `distance to ${seed.node}`).toBe(whyPath(tree, graph.id(seed.node)!)!.length - 1);
           }
           expect(explanation.seeds!.find((x) => x.node === affected.path.at(-1))!.path).toEqual(affected.path);
         }
