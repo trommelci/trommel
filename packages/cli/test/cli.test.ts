@@ -1,6 +1,6 @@
 // End to end: the CLI run from source, as CI runs it, against a throwaway git repository.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -264,6 +264,22 @@ describe('trommel explain', () => {
     expect(explain(['a.test.ts'], join(repo, 'test'))).toEqual(fromRoot);
     const out = JSON.parse(explain(['a.test.ts', '--json'], join(repo, 'test')).stdout) as { base: { map: string } };
     expect(out.base.map).toBe('.trommel/map/map.smap');
+  });
+
+  it('takes an absolute path, through a link to the repository too', () => {
+    const fromRoot = explain(['test/a.test.ts']);
+    // On a Windows runner the temporary directory is under a short name (RUNNER~1), so this path is too.
+    expect(explain([join(repo, 'test', 'a.test.ts')])).toEqual(fromRoot);
+    // A junction on Windows, which needs no privilege; a symlink elsewhere.
+    const outside = mkdtempSync(join(tmpdir(), 'trommel-cli-link-'));
+    const link = join(outside, 'repo');
+    symlinkSync(repo, link, 'junction');
+    try {
+      expect(explain([join(link, 'test', 'a.test.ts')])).toEqual(fromRoot);
+    } finally {
+      unlinkSync(link);
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it.runIf(process.platform === 'win32')('takes backslashes on Windows', () => {

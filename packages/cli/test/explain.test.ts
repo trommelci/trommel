@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -105,7 +105,15 @@ describe('targetNode', () => {
 describe('repoPath', () => {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'trommel-explain-')));
   mkdirSync(join(root, 'test'));
+  writeFileSync(join(root, 'test', 'a.test.ts'), '');
+  // A link to the repository from outside it, as a short name or a symlinked $TMPDIR gives: a junction
+  // on Windows, which needs no privilege, and a symlink elsewhere (the type is ignored there).
+  const outside = realpathSync.native(mkdtempSync(join(tmpdir(), 'trommel-explain-link-')));
+  const link = join(outside, 'repo');
+  symlinkSync(root, link, 'junction');
   afterAll(() => {
+    unlinkSync(link);
+    rmSync(outside, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -118,5 +126,32 @@ describe('repoPath', () => {
 
   it.each(['../x.test.ts', '.', '', 'test/../..'])('refuses %j as outside the repository', (arg) => {
     expect(() => repoPath(root, root, arg)).toThrow(new Error(`${arg} is outside the repository`));
+  });
+
+  it('takes an absolute path through a link to the repository as the path inside it', () => {
+    expect(repoPath(root, root, join(link, 'test', 'a.test.ts'))).toBe('test/a.test.ts');
+    expect(repoPath(root, join(link, 'test'), 'a.test.ts')).toBe('test/a.test.ts');
+    expect(repoPath(link, root, join(root, 'test', 'a.test.ts'))).toBe('test/a.test.ts');
+  });
+
+  it('resolves a file absent from the work tree, under directories absent too', () => {
+    expect(repoPath(root, root, join(link, 'test', 'gone.test.ts'))).toBe('test/gone.test.ts');
+    expect(repoPath(root, root, join(link, 'new', 'deeper', 'x.test.ts'))).toBe('new/deeper/x.test.ts');
+  });
+
+  it('keeps a link inside the repository as typed', () => {
+    symlinkSync(join(root, 'test'), join(root, 'lib'), 'junction');
+    try {
+      expect(repoPath(root, root, join(link, 'lib', 'a.test.ts'))).toBe('lib/a.test.ts');
+      expect(repoPath(root, root, 'lib/a.test.ts')).toBe('lib/a.test.ts');
+    } finally {
+      unlinkSync(join(root, 'lib'));
+    }
+  });
+
+  it('still refuses a path outside, through the link or not', () => {
+    for (const arg of [join(link, '..', 'x.test.ts'), join(outside, 'x.test.ts'), link]) {
+      expect(() => repoPath(root, root, arg)).toThrow(new Error(`${arg} is outside the repository`));
+    }
   });
 });

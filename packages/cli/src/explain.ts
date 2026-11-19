@@ -1,7 +1,7 @@
 // What `trommel explain` needs beside the plan: the argument as a repository path, the --to value as
 // a map node, and the text a person reads. The decision itself comes from `explainTest` in core.
 import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 
 import type { Explanation, TrommelMap } from '@trommel/core';
 
@@ -9,16 +9,37 @@ import { readable, shown } from './report.ts';
 
 /**
  * `arg` (relative to the current directory, or absolute) as a POSIX path from the repository root.
- * Both ends go through realpath, so a short (8.3) Windows name or a symlinked temp directory cannot
- * make a file inside the repository look outside it.
+ * `arg` is resolved lexically, then its ancestors, nearest first, are compared with the root through
+ * realpath: the first that exists and is the root ends the walk, and the rest of the path, as typed,
+ * is the answer. So a short (8.3) Windows name, a symlinked temp directory or a link to the
+ * repository cannot make a file inside it look outside it, a link inside the repository stays as
+ * typed, and the file need not exist in the work tree.
  */
 export function repoPath(root: string, cwd: string, arg: string): string {
-  const path = relative(realpathSync.native(root), resolve(realpathSync.native(cwd), arg));
-  const parts = path.split(sep);
-  if (path === '' || isAbsolute(path) || parts[0] === '..') {
-    throw new Error(`${arg} is outside the repository`);
+  const real = realpathSync.native(root);
+  const path = resolve(cwd, arg);
+  for (let ancestor = path; ; ancestor = dirname(ancestor)) {
+    if (realOrNull(ancestor) === real) {
+      const below = relative(ancestor, path);
+      if (below === '') {
+        break;
+      }
+      return below.split(sep).join('/');
+    }
+    if (dirname(ancestor) === ancestor) {
+      break;
+    }
   }
-  return parts.join('/');
+  throw new Error(`${arg} is outside the repository`);
+}
+
+/** The real path of `path`, or null when it does not exist (or cannot be read). */
+function realOrNull(path: string): string | null {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return null;
+  }
 }
 
 /**
