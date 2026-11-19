@@ -208,7 +208,9 @@ describe('trommel explain', () => {
     expect(explain(['test/c.test.ts', '--to', 'src/b.ts']).stdout).toContain(
       '\ntest/c.test.ts does not reach src/b.ts in the map. Static reachability cannot see what a test reads through fs.\n',
     );
-    expect(explain(['test/c.test.ts', '--to', 'src/zzz.ts']).stdout).toContain('\nsrc/zzz.ts is not in the map.\n');
+    expect(explain(['test/c.test.ts', '--to', 'src/zzz.ts']).stdout).toContain(
+      '\nsrc/zzz.ts is not in the map. Static reachability cannot see what a test reads through fs.\n',
+    );
     const lodash = explain(['test/c.test.ts', '--to', 'p:npm:node_modules/lodash']).stdout;
     expect(lodash).toMatch(/\nPath to p:npm:node_modules\/lodash: test\/c\.test\.ts → .*→ p:npm:node_modules\/lodash\n/);
   });
@@ -245,7 +247,7 @@ describe('trommel explain', () => {
     expect(noMap.stdout.endsWith(`\nWithout a usable map, the path to p:npm:node_modules/lodash is unknown.\n${FOOTER}`)).toBe(true);
     const missing = explain(['test/a.test.ts', '--to', 'u:src/nothing.ts']);
     expect(missing.status).toBe(0);
-    expect(missing.stdout).toContain('\nu:src/nothing.ts is not in the map.\n');
+    expect(missing.stdout).toContain('\nu:src/nothing.ts is not in the map. Static reachability cannot see what a test reads through fs.\n');
   });
 
   it('prints the explanation as canonical JSON, byte for byte the same each time', () => {

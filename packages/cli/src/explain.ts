@@ -52,6 +52,7 @@ export function targetNode(arg: string, path: () => string, map: TrommelMap | nu
 }
 
 const FOOTER = 'Shadow mode runs every test; this is what static selection would do.';
+const UNSEEN = 'Static reachability cannot see what a test reads through fs.';
 
 export function explanationText(explanation: Explanation): string {
   const { test } = explanation;
@@ -87,11 +88,12 @@ export function explanationText(explanation: Explanation): string {
       case 'reached':
         lines.push(`Path to ${to}: ${route(readable(explanation.to.path))}`);
         break;
+      // Neither is proof of independence: the test may still read the file through fs.
       case 'not reached':
-        lines.push(`${test} does not reach ${to} in the map. Static reachability cannot see what a test reads through fs.`);
+        lines.push(`${test} does not reach ${to} in the map. ${UNSEEN}`);
         break;
       case 'not in the map':
-        lines.push(`${to} is not in the map.`);
+        lines.push(`${to} is not in the map. ${UNSEEN}`);
         break;
       case 'test not in the map':
         lines.push(`${test} is not in the map, so it has no path to ${to}.`);

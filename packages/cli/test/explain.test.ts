@@ -65,7 +65,7 @@ describe('explanationText', () => {
 
   it.each<[NonNullable<Explanation['to']>, string]>([
     [{ node: 'f:src/b.ts', status: 'not reached' }, 't.test.ts does not reach src/b.ts in the map. Static reachability cannot see what a test reads through fs.'],
-    [{ node: 'f:src/zzz.ts', status: 'not in the map' }, 'src/zzz.ts is not in the map.'],
+    [{ node: 'f:src/zzz.ts', status: 'not in the map' }, 'src/zzz.ts is not in the map. Static reachability cannot see what a test reads through fs.'],
     [{ node: 'f:src/b.ts', status: 'test not in the map' }, 't.test.ts is not in the map, so it has no path to src/b.ts.'],
     [{ node: 'f:src/b.ts', status: 'no map' }, 'Without a usable map, the path to src/b.ts is unknown.'],
   ])('renders the --to status %#', (target, line) => {
