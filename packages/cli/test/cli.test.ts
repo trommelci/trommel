@@ -222,6 +222,23 @@ describe('trommel explain', () => {
     expect(run.stderr).toBe('');
   });
 
+  it('answers --to from the map when trommel.config.json is invalid, and still runs everything', () => {
+    commit({ 'trommel.config.json': '{ "version": 2 }' });
+    try {
+      const cause = 'invalid trommel.config.json: version: must be 1';
+      expect(explain(['test/a.test.ts', '--to', 'src/b.ts'])).toEqual({
+        status: 0,
+        stdout: `test/a.test.ts would run: L3: ${cause}.\nPath to src/b.ts: test/a.test.ts → src/a.ts → src/b.ts\n${FOOTER}`,
+        stderr: '',
+      });
+      const out = JSON.parse(explain(['test/a.test.ts', '--to', 'src/b.ts', '--json']).stdout) as Record<string, unknown>;
+      expect(out).toMatchObject({ base: { map: '.trommel/map/map.smap' }, fallback: cause, explanation: { verdict: 'forced', reason: `L3: ${cause}`, to: { status: 'reached' } } });
+    } finally {
+      git('rm', '-q', 'trommel.config.json');
+      git('commit', '-q', '-m', 'c');
+    }
+  });
+
   it('reads a key-shaped --to value as a node key, never as a path', () => {
     const noMap = explain(['test/a.test.ts', '--map', 'nowhere', '--to', 'p:npm:node_modules/lodash']);
     expect(noMap.status).toBe(0);

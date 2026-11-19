@@ -219,16 +219,11 @@ function planAt(io: Io, head: Head, mapDir: string, from: string): PlanAt {
 
   let smap: Smap | null = null;
   if (fallback === undefined) {
-    try {
-      smap = decodeSmap(readFileSync(resolve(from, mapPath)));
-    } catch (error) {
-      if (error instanceof MapError) {
-        fallback = `the map at ${mapPath} is invalid: ${error.message}`;
-      } else if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        fallback = `no map at ${mapPath}`;
-      } else {
-        fallback = `the map at ${mapPath} cannot be read: ${(error as Error).message}`;
-      }
+    const read = readMap(mapPath, from);
+    if (read.smap === null) {
+      fallback = read.fallback;
+    } else {
+      smap = read.smap;
     }
   }
   let selection: Selection;
@@ -246,6 +241,21 @@ function planAt(io: Io, head: Head, mapDir: string, from: string): PlanAt {
     }
   }
   return { tests, notPlanned, mapPath, smap, selection, ...(fallback === undefined ? {} : { fallback }) };
+}
+
+/** The map at `mapPath`, resolved against the directory `from`, or why there is no usable map. */
+function readMap(mapPath: string, from: string): { readonly smap: Smap } | { readonly smap: null; readonly fallback: string } {
+  try {
+    return { smap: decodeSmap(readFileSync(resolve(from, mapPath))) };
+  } catch (error) {
+    if (error instanceof MapError) {
+      return { smap: null, fallback: `the map at ${mapPath} is invalid: ${error.message}` };
+    }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { smap: null, fallback: `no map at ${mapPath}` };
+    }
+    return { smap: null, fallback: `the map at ${mapPath} cannot be read: ${(error as Error).message}` };
+  }
 }
 
 async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promise<number> {
@@ -284,8 +294,11 @@ async function explain(command: Extract<Command, { name: 'explain' }>, io: Io): 
   const { root } = head.snapshot;
   // The static plan, whatever selection.mode says: explain never selects, it explains. The default
   // map is the repository's, wherever explain runs; a --map given is relative to the current directory.
-  const { tests, mapPath, smap, selection, fallback } =
-    command.map === null ? planAt(io, head, MAP_DIR, root) : planAt(io, head, command.map, io.cwd);
+  const [mapDir, from] = command.map === null ? [MAP_DIR, root] : [command.map, io.cwd];
+  const { tests, mapPath, smap: planned, selection, fallback } = planAt(io, head, mapDir, from);
+  // An invalid configuration plans everything without reading the map. The selection stays that
+  // fallback, but the paths, --to's included, still come from the map when it decodes.
+  const smap = planned ?? (head.fallback === undefined ? null : readMap(mapPath, from).smap);
   const test = repoPath(root, io.cwd, command.test);
   if (!selection.tests.includes(test)) {
     throw new Error(`${command.test} is not a test file Trommel plans at ${command.head}; it plans ${tests.length} test ${tests.length === 1 ? 'file' : 'files'}`);
