@@ -222,6 +222,15 @@ describe('trommel explain', () => {
     expect(run.stderr).toBe('');
   });
 
+  it('reads a key-shaped --to value as a node key, never as a path', () => {
+    const noMap = explain(['test/a.test.ts', '--map', 'nowhere', '--to', 'p:npm:node_modules/lodash']);
+    expect(noMap.status).toBe(0);
+    expect(noMap.stdout.endsWith(`\nWithout a usable map, the path to p:npm:node_modules/lodash is unknown.\n${FOOTER}`)).toBe(true);
+    const missing = explain(['test/a.test.ts', '--to', 'u:src/nothing.ts']);
+    expect(missing.status).toBe(0);
+    expect(missing.stdout).toContain('\nu:src/nothing.ts is not in the map.\n');
+  });
+
   it('prints the explanation as canonical JSON, byte for byte the same each time', () => {
     const run = explain(['test/a.test.ts', '--json']);
     expect(run.status).toBe(0);

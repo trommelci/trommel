@@ -21,9 +21,13 @@ export function repoPath(root: string, cwd: string, arg: string): string {
   return parts.join('/');
 }
 
-/** The --to value as a node key: an exact key of the map, else the file of that path. */
+/**
+ * The --to value as a node key: an exact key of the map, or anything shaped like a key (a node
+ * prefix not followed by a slash or backslash, so a Windows drive path like `C:\x` stays a path),
+ * with or without a map; else the file of that path.
+ */
 export function targetNode(arg: string, path: () => string, map: TrommelMap | null): string {
-  return map !== null && Object.hasOwn(map.nodes, arg) ? arg : `f:${path()}`;
+  return (map !== null && Object.hasOwn(map.nodes, arg)) || /^[cdfgpru]:(?![\\/])/.test(arg) ? arg : `f:${path()}`;
 }
 
 const FOOTER = 'Shadow mode runs every test; this is what static selection would do.';

@@ -83,9 +83,22 @@ describe('targetNode', () => {
     expect(targetNode('src/b.ts', path, map)).toBe('f:src/b.ts');
   });
 
-  it('takes a file when there is no map, and does not resolve the path of a key', () => {
-    expect(targetNode('p:npm:node_modules/lodash', path, null)).toBe('f:src/b.ts');
-    expect(targetNode('f:src/b.ts', () => { throw new Error('resolved'); }, map)).toBe('f:src/b.ts');
+  const never = (): string => {
+    throw new Error('resolved');
+  };
+
+  it('takes a key-shaped value as a key, with no map or a map lacking it, without resolving a path', () => {
+    for (const key of ['p:npm:node_modules/lodash', 'u:src/x.ts', 'f:src/b.ts', 'r:src/b', 'c:']) {
+      expect(targetNode(key, never, null)).toBe(key);
+      expect(targetNode(key, never, { nodes: {} } as unknown as TrommelMap)).toBe(key);
+    }
+    expect(targetNode('f:src/b.ts', never, map)).toBe('f:src/b.ts');
+  });
+
+  it('keeps Windows drive paths and plain files as paths', () => {
+    for (const arg of ['c:/x', 'C:\\x', 'src/b.ts']) {
+      expect(targetNode(arg, path, null)).toBe('f:src/b.ts');
+    }
   });
 });
 
