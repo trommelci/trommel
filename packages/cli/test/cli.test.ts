@@ -254,8 +254,16 @@ describe('trommel explain', () => {
     expect(() => readFileSync(outputs)).toThrow(/ENOENT/);
   });
 
-  it('takes the test relative to the current directory', () => {
+  it('takes the test and --map relative to the current directory', () => {
     expect(explain(['a.test.ts', '--map', '../.trommel/map'], join(repo, 'test'))).toEqual({ status: 0, stdout: A_TEXT, stderr: '' });
+  });
+
+  it('reads the default map at the repository root, from a subdirectory too', () => {
+    const fromRoot = explain(['test/a.test.ts']);
+    expect(fromRoot).toEqual({ status: 0, stdout: A_TEXT, stderr: '' });
+    expect(explain(['a.test.ts'], join(repo, 'test'))).toEqual(fromRoot);
+    const out = JSON.parse(explain(['a.test.ts', '--json'], join(repo, 'test')).stdout) as { base: { map: string } };
+    expect(out.base.map).toBe('.trommel/map/map.smap');
   });
 
   it.runIf(process.platform === 'win32')('takes backslashes on Windows', () => {

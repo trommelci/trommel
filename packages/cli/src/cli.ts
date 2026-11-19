@@ -34,7 +34,7 @@ import {
   type Smap,
 } from '@trommel/core';
 
-import { parseCommand, planMode, USAGE, UsageError, type Command } from './args.ts';
+import { MAP_DIR, parseCommand, planMode, USAGE, UsageError, type Command } from './args.ts';
 import { CONFIG_FILE, ConfigError, discoverTests, parseConfig, rulesOf, type TrommelConfig } from './config.ts';
 import { explanationText, repoPath, targetNode } from './explain.ts';
 import { buildReport, githubOutputs, summaryOf } from './report.ts';
@@ -206,8 +206,11 @@ interface PlanAt {
   readonly fallback?: string;
 }
 
-/** The static plan at `head` from the map in `mapDir`; with no usable map, every test, and why. */
-function planAt(io: Io, head: Head, mapDir: string): PlanAt {
+/**
+ * The static plan at `head` from the map in `mapDir`, resolved against the directory `from`; with no
+ * usable map, every test, and why. Messages name the map as `mapDir` gives it.
+ */
+function planAt(io: Io, head: Head, mapDir: string, from: string): PlanAt {
   const { snapshot, config } = head;
   let fallback = head.fallback;
   const rules = rulesOf(config);
@@ -217,7 +220,7 @@ function planAt(io: Io, head: Head, mapDir: string): PlanAt {
   let smap: Smap | null = null;
   if (fallback === undefined) {
     try {
-      smap = decodeSmap(readFileSync(resolve(io.cwd, mapPath)));
+      smap = decodeSmap(readFileSync(resolve(from, mapPath)));
     } catch (error) {
       if (error instanceof MapError) {
         fallback = `the map at ${mapPath} is invalid: ${error.message}`;
@@ -248,7 +251,7 @@ function planAt(io: Io, head: Head, mapDir: string): PlanAt {
 async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promise<number> {
   const head = await headAt(io, command.head);
   planMode(command, head.fallback === undefined ? head.config.selection?.mode : undefined);
-  const { notPlanned, mapPath, smap, selection, fallback } = planAt(io, head, command.map);
+  const { notPlanned, mapPath, smap, selection, fallback } = planAt(io, head, command.map, io.cwd);
 
   const report = buildReport({
     selection,
@@ -278,9 +281,11 @@ async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promis
 
 async function explain(command: Extract<Command, { name: 'explain' }>, io: Io): Promise<number> {
   const head = await headAt(io, command.head);
-  // The static plan, whatever selection.mode says: explain never selects, it explains.
-  const { tests, mapPath, smap, selection, fallback } = planAt(io, head, command.map);
   const { root } = head.snapshot;
+  // The static plan, whatever selection.mode says: explain never selects, it explains. The default
+  // map is the repository's, wherever explain runs; a --map given is relative to the current directory.
+  const { tests, mapPath, smap, selection, fallback } =
+    command.map === null ? planAt(io, head, MAP_DIR, root) : planAt(io, head, command.map, io.cwd);
   const test = repoPath(root, io.cwd, command.test);
   if (!selection.tests.includes(test)) {
     throw new Error(`${command.test} is not a test file Trommel plans at ${command.head}; it plans ${tests.length} test ${tests.length === 1 ? 'file' : 'files'}`);

@@ -23,7 +23,8 @@ describe('parseCommand', () => {
   });
 
   it('reads explain with one test, and its options', () => {
-    const explain = { name: 'explain', test: 'test/a.test.ts', to: null, map: '.trommel/map', head: 'HEAD', json: false };
+    // No --map is null: explain's default map is at the repository root, not the current directory.
+    const explain = { name: 'explain', test: 'test/a.test.ts', to: null, map: null, head: 'HEAD', json: false };
     expect(parseCommand(['explain', 'test/a.test.ts'])).toEqual(explain);
     expect(parseCommand(['explain', 'test/a.test.ts', '--to', 'x', '--map', 'm', '--head', 'h', '--json'])).toEqual({ ...explain, to: 'x', map: 'm', head: 'h', json: true });
     for (const argv of [['explain'], ['explain', 'a', 'b']]) {

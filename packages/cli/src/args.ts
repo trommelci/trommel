@@ -8,7 +8,8 @@ export type Command =
   | { readonly name: 'version' }
   | { readonly name: 'graph'; readonly rev: string; readonly out: string | null }
   | { readonly name: 'diff'; readonly base: string; readonly head: string }
-  | { readonly name: 'explain'; readonly test: string; readonly to: string | null; readonly map: string; readonly head: string; readonly json: boolean }
+  // explain's `map` is null without --map: it then reads MAP_DIR at the repository root.
+  | { readonly name: 'explain'; readonly test: string; readonly to: string | null; readonly map: string | null; readonly head: string; readonly json: boolean }
   | { readonly name: 'plan'; readonly mode: Mode | null; readonly static: boolean; readonly map: string; readonly head: string; readonly shards: number | null };
 
 export class UsageError extends Error {
@@ -16,6 +17,9 @@ export class UsageError extends Error {
 }
 
 const MODES: readonly string[] = ['safe', 'shadow', 'budget'];
+
+/** The default --map. `plan` reads it from the current directory, `explain` from the repository root. */
+export const MAP_DIR = '.trommel/map';
 
 export const USAGE = `Usage: trommel <command> [options]
 
@@ -105,7 +109,7 @@ export function parseCommand(argv: readonly string[]): Command {
         name: 'plan',
         mode: values.shadow === true ? 'shadow' : ((values.mode as Mode | undefined) ?? null),
         static: values.static === true,
-        map: values.map ?? '.trommel/map',
+        map: values.map ?? MAP_DIR,
         head: values.head ?? 'HEAD',
         shards,
       };
@@ -120,7 +124,7 @@ export function parseCommand(argv: readonly string[]): Command {
       if (positionals.length !== 1) {
         throw new UsageError('explain takes one test file: trommel explain <test>');
       }
-      return { name: 'explain', test: positionals[0]!, to: values.to ?? null, map: values.map ?? '.trommel/map', head: values.head ?? 'HEAD', json: values.json === true };
+      return { name: 'explain', test: positionals[0]!, to: values.to ?? null, map: values.map ?? null, head: values.head ?? 'HEAD', json: values.json === true };
     }
     default:
       throw new UsageError(`unknown command ${JSON.stringify(name)}`);
