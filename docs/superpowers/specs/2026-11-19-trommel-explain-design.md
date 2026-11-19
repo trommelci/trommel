@@ -1,7 +1,7 @@
 # `trommel explain`: design
 
 - **Written:** 2026-11-19, at `main` = `587b013` (the lockfile cut-over merged, engine `trommel-static-4`).
-- **Status:** approved by Ojas on 2026-11-19.
+- **Status:** approved by Ojas on 2026-11-19. Built on branch `m1/explain`, and [DECISIONS.md](../../../DECISIONS.md) entry 38 records it. Amended on 2026-11-19 in §4 for what the build changed: which `--to` values are node keys (ruling R5), the signature of `explainTest`, and the two loading functions.
 - **Scope:** the `trommel explain` item of [HANDOFF.md](../../../HANDOFF.md) §8, one of the M1 scope items in [roadmap](../../roadmap.md) §1. It is not an exit criterion.
 - **Decided already, and not reopened here:** [architecture.md](../../architecture.md) §5.1 lists `trommel explain <test>` as the why-path command, beside `trommel verify`. In M3 it explains a plan's decision; M1 builds it so that meaning carries over.
 
@@ -42,7 +42,7 @@ The last one is the question a person asks when a shadow summary lists a would-s
 
 **Command.** `trommel explain <test> [--to <file|node>] [--map <dir>] [--head <rev>] [--json]`. `--map` defaults to `.trommel/map` and `--head` to `HEAD`, as for `plan`. It explains the static, shadow-mode plan: the only plan M1 has.
 
-**Arguments (builder's call).** `<test>` and a path given to `--to` are taken relative to the current directory, as git does, and turned into repository-relative POSIX paths. A `--to` value that is exactly a key of the map (`p:npm:node_modules/lodash`, `d:src`, `u:src/x.ts`) is that node; anything else is a file, `f:<path>`.
+**Arguments (builder's call).** `<test>` and a path given to `--to` are taken relative to the current directory, as git does, and turned into repository-relative POSIX paths. A `--to` value that is exactly a key of the map (`p:npm:node_modules/lodash`, `d:src`, `u:src/x.ts`) is that node, and so is any value shaped like a key: a node prefix (`c:`, `d:`, `f:`, `g:`, `p:`, `r:` or `u:`) not followed by a slash or a backslash, with or without a map. Anything else is a file, `f:<path>`, so a Windows drive path such as `C:\x` stays a path. (Amended by ruling R5: with only exact keys, a key missing from the map, or given with no map, went through `path.resolve`, which on Windows reads `p:` as a drive, and exited 1 as "outside the repository". The cost is that a drive-relative path such as `c:foo` is read as a key.)
 
 **Verdict,** taken from the plan's `Selection`:
 - **affected:** every seed (changed node or `u:` node) the test reaches, sorted by key, each with a shortest path from the test. For the seed where the plan's why-path ends, the path is the plan's own, so the summary and `explain` never show two routes to one node. A `u:` node carries its causes from the map.
@@ -59,8 +59,8 @@ In shadow mode every test runs; the text says so once.
 
 **Code.**
 - `core/graph/graph.ts`: `forwardTree(graph, root)`, a breadth-first search over dependencies with parent pointers and the same tie-break as `reverseReach` (neighbours in ascending id order, first discovery wins). It returns a `Reach`, so `whyPath` gives the chain from the test to any node it reaches.
-- `core/select/explain.ts`: `explainTest(map, graph, selection, test, to?)`, returning a plain `Explanation` object. It never recomputes a verdict.
-- `packages/cli`: the map-and-head loading of `plan` moves into one function that both commands call; `explain` adds argument parsing, a text renderer and the JSON output.
+- `core/select/explain.ts`: `explainTest(selection, test, context, to?)`, where `context` is the map and the graph, or null when there is no usable map, returning a plain `Explanation` object. It never recomputes a verdict. (Amended: the design had `explainTest(map, graph, selection, test, to?)`.)
+- `packages/cli`: the map-and-head loading of `plan` moves into two functions that both commands call, `headAt` and `planAt` in `cli.ts`; `explain` adds argument parsing, a text renderer and the JSON output.
 
 **Tests, written first.**
 - `forwardTree`: on random graphs, every reached node's path is a chain of real edges from the root, its length is the forward BFS distance, and unreached nodes have no path.

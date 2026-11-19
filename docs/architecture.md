@@ -702,7 +702,8 @@ Node 20 reached end of life on 2026-04-30, and Node 22 does on 2027-04-30, so th
 | `trommel run [--shard k] -- <cmd>` | Run the shard's file list (plan file read by the runner plugin, no CLI filters), plus every test file the runner discovers that the plan does not mention ([ADR-0004](adr/0004-test-file-selection-unit.md)). Run a planned skip after all when the shard's environment fingerprint or tree differs from what the plan assumed ([ADR-0005](adr/0005-closure-equality-safety-criterion.md)). Apply quarantine exit semantics; upload, or spool `trommel-results.tgz` |
 | `trommel gate` | The single required check: aggregates `needs` results and the plan; fails only on real failures |
 | `trommel upload <files…>` | Results-only ingest (Playwright, any JUnit) |
-| `trommel verify <proof\|plan-id>` · `trommel explain <test>` · `trommel doctor` · `trommel graph\|diff` | Proof check, why-path, environment diagnosis, inspection |
+| `trommel explain <test> [--to <file\|node>] [--map dir] [--head rev] [--json]` | Why-path: why a test runs or would be skipped. In M1 it explains the static plan: it calls the planner and takes the verdict, a forced test's reason and the why-path from the plan, so it cannot disagree with `trommel plan`, and adds every changed or uncertain node the test reaches with a shortest path to each. `--to` gives the test's path to one file or map node, or says the map has none; `--json` prints canonical JSON ([DECISIONS.md](../DECISIONS.md) entry 38). Explaining a recorded plan or a plan id comes with proofs in M3 |
+| `trommel verify <proof\|plan-id>` · `trommel doctor` · `trommel graph\|diff` | Proof check, environment diagnosis, inspection |
 
 **`trommel.config.json`** (JSON, zero-dep parser; validated by the CLI and the server):
 ```json
