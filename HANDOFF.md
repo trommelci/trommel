@@ -75,10 +75,10 @@
   - **Expect one run-all plan** on each branch until a push to `main` caches a `trommel-static-4` map. The summary gives the engine mismatch as the cause.
   - 937 tests pass in 44 files.
 - **`trommel explain` (2026-11-19, branch `m1/explain`, DECISIONS 38):**
-  - `trommel explain <test>` says what the static plan decides for one test file, and why: every changed or uncertain node it reaches, each with a shortest path; the reason a forced test runs; or how many nodes a would-skip depends on. `--to <file|node>` gives the test's path to one node, or says the map has none, and `--json` prints the explanation as canonical JSON.
+  - `trommel explain <test>` says what the static plan decides for one test file, and why: every changed or uncertain node it reaches, each with a shortest path; the reason a forced test runs; or how many nodes a would-skip depends on. `--to <file|node>` gives the test's path to one node, or says the map has none, and `--json` prints the explanation as canonical JSON. Without `--map` it reads `.trommel/map` at the repository root, from any directory.
   - It loads the head and the map with `plan`'s own code, calls `selectStatic` and takes the verdict from the plan, so the two cannot disagree. The paths come from `forwardTree`, a forward search from the test, and the seed the plan names keeps the plan's own path.
   - Nothing the planner reads changed: the engine stays `trommel-static-4`, no golden hash moved, and no run-all plan is expected.
-  - 993 tests pass in 46 files.
+  - 1,001 tests pass in 46 files.
 
 **First four things to do:**
 1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 4 of its worklist are done. M2 is item 5, and the rest of M1 is in §8.
@@ -179,7 +179,7 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `993 passed` from `npm test` (after DECISIONS 38; elsewhere than Windows, 992 and 1 skipped), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `1001 passed` from `npm test` (after DECISIONS 38; elsewhere than Windows, 1000 and 1 skipped), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
@@ -314,7 +314,7 @@ gh api repos/trommelci/trommel-corpus/contents/manifests/2026 --jq '.[].name'
 - Every run spent its 320-minute budget and stopped one item partway through (`stoppedEarly`: time budget spent). Run 5's job took 320 of its 350 minutes, publishing included, and had no errors.
 - **Run 5 was the first after the move to `trommelci`.** It called `trommelci/trommel/.github/workflows/corpus-collect.yml@main`, collected with `65a5958`, and its templates check passed.
 - After run 5, 12 repositories have all 87 days; zod finished. The slowest six (AutoGPT, TanStack/query, baserow, lexical, prettier, luma.gl) have 48, then vuejs/core 49, vite 50, meshery 52, svelte 66, trpc 75, and babel and typescript-eslint 85.
-- Run 5 added about 17 days to each of the slowest six, while one day a day expires. At that pace they need about three more daily runs, fewer once finished repositories free their share. That is an estimate.
+- Run 5 added about 17 days to each of the slowest six, while one day a day expires. At that pace they need about three more daily runs, fewer once finished repositories free their share. That is an estimate, superseded by the run-10 check below: the backlog was clear by run 10, five daily runs later.
 - Run 5 mirrored no test-report archives (run 4 mirrored 15). The corpus is almost all run, attempt and job metadata.
 - Run 3's one error (`Unexpected end of JSON input`, es-toolkit, 2026-08-19) was collected again: es-toolkit has every day after run 4.
 
@@ -551,7 +551,7 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
     - **Phantom dependencies** (found by the whole-branch review; not yet decided, §10 item 17). A package that requires a name it does not declare, and finds it by hoisting or through pnpm's `.pnpm/node_modules`, has no edge to it. npm has the same gap.
     - **The name node's precision cost on pnpm monorepos.** A file that imports a name its own workspace package does not declare depends on that name's name node, which changes whenever any copy of the name is bumped, added or removed, or a package that depends on it is bumped. So where tests import a root-declared vitest, a bump of a `@vitest/*` package reruns those tests. Reading pnpm's `node-linker` would let the isolated layout walk up to the declaring importer exactly.
     - bun lockfiles, pnpm other than 9.0, Berry other than 8 and 10, and npm v1 are unparseable, so any change to them runs everything (L3). Only root lockfiles are read.
-  - **`trommel explain`** (DECISIONS 38) explains the static plan from a map and a head, not a recorded plan. Its "does not reach" is static reachability, so it says nothing about what a test reads through `fs`. A `--to` value such as `c:foo`, a Windows drive-relative path, is read as a node key.
+  - **`trommel explain`** (DECISIONS 38) explains the static plan from a map and a head, not a recorded plan. Its "does not reach" and "is not in the map" are static reachability, so they say nothing about what a test reads through `fs`. A `--to` value such as `c:foo`, a Windows drive-relative path, is read as a node key.
   - Precision costs seen on hono:
     - A version bump in the root `package.json` reruns every test, because each file depends on its whole nearest `package.json`. Hashing only the fields that change module semantics (`type`, `exports`, `imports`, `main`, dependencies) would fix it.
     - A self-import whose `exports` point at build output (`dist/`) is unresolved, so it is uncertain.
@@ -636,7 +636,7 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
 | 35 | The external review of SMAP v0: the section count checked before use, two clarifications in the specification, lint ignores `.claude/` and `.superpowers/` |
 | 36 | The pnpm and yarn lockfile readers: a strict YAML subset, the resolved model, three readers with no caller yet, 78 hand mutants |
 | 37 | The lockfile cut-over: one `Lockfile` interface, SMAP kinds 3 to 5, engine `trommel-static-4`, the planner on every format, the soundness property and its residuals (rulings R9 to R11), the 70-commit replay, the corpus check still to run |
-| 38 | `trommel explain`: the static plan's decision for one test, never recomputed; `forwardTree` paths with the plan's own for the seed it names; `--to`, with key-shaped values read as keys; text by default, `--json` canonical; exit codes |
+| 38 | `trommel explain`: the static plan's decision for one test, never recomputed; `forwardTree` paths with the plan's own for the seed it names; `--to`, with key-shaped values read as keys; the default map at the repository root; paths through short names and links; text by default, `--json` canonical; exit codes |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 
