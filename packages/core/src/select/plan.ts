@@ -146,6 +146,11 @@ export function selectStatic(map: TrommelMap, head: HeadState, rules: PlanRules,
       continue;
     }
     const path = pathOf(key);
+    // The install reads the root lockfile, and what that changes is in the p: nodes (DECISIONS 37), as for a lockfile
+    // that is no node. It is a file node when a script names a directory above it (DECISIONS 26).
+    if (key.startsWith('f:') && LOCKFILE_PATHS.includes(path!)) {
+      continue;
+    }
     if (path !== null && exempt(path)) {
       continue;
     }

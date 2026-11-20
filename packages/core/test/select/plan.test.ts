@@ -114,6 +114,23 @@ describe('selectStatic', () => {
     expect(selected(selection)).toEqual(['test/c.test.ts']);
   });
 
+  it('leaves a lockfile change to the package nodes when an untested script names the root directory', () => {
+    // A directory URL depends on every file below it (DECISIONS 26), so the lockfile is a file node that no test reaches.
+    const base = { ...BASE, 'rollup.config.js': "export const root = new URL('.', import.meta.url);\n" };
+    expect(Object.hasOwn(mapOf(fakeRepo(base)).nodes, 'f:package-lock.json')).toBe(true);
+    const selection = plan(base, { ...base, 'package-lock.json': LOCK('sha512-2') });
+    expect(selection.changed).toEqual(['f:package-lock.json', 'p:npm:node_modules/lodash']);
+    expect(selection.escalations).toEqual([]);
+    expect(selected(selection)).toEqual(['test/c.test.ts']);
+  });
+
+  it('still selects every test that reaches the lockfile file itself', () => {
+    const base = { ...BASE, 'src/root.ts': "export const root = new URL('../', import.meta.url);\n", 'test/root.test.ts': "import '../src/root';\n" };
+    const selection = plan(base, { ...base, 'package-lock.json': LOCK('sha512-2') });
+    expect(selection.escalations).toEqual([]);
+    expect(selected(selection)).toEqual(['test/c.test.ts', 'test/root.test.ts']);
+  });
+
   it('selects importers of every copy of a package when a new copy is installed elsewhere', () => {
     const head = { ...BASE, 'package-lock.json': LOCK('sha512-1', { 'node_modules/x/node_modules/lodash': { version: '3', integrity: 'sha512-3' } }) };
     const selection = plan(BASE, head);
