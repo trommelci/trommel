@@ -108,3 +108,24 @@ The raw output is in [results/2026-11-15-lockfile-win32.json](results/2026-11-15
 - **No refusal,** and the largest file (584 KB) reads in under 16 ms.
 - **zod's 5 unresolved** are its peers on its own workspace package. **prettier's 1** is `remark-parse`, which `resolutions` redirects to `trim`. Neither is a refusal: the reference takes the name node (spec §6.5).
 - **Excalidraw's importer count is 0** because the benchmark gives classic yarn an empty workspace. A real plan reads the members' `package.json` files.
+
+## The lockfile corpus check: `node bench/lockfile-corpus.ts <clone> [--since <date>] [--rev <rev>]`
+
+The check of the lockfile design's §9.4 (DECISIONS 40), on one clone, read only through git. Over the first-parent history of `<rev>` (default `HEAD`) since `<date>` (default a year before `<rev>`):
+- it reads the root lockfile of every commit that changed one, as the builder does, and lists each refusal with its reason;
+- it plans every lockfile-only commit, and every dependency commit (root lockfiles and `package.json` files only), as CI would: `trommel graph` at the first parent, then `trommel plan --shadow --static` at the commit, in the same process.
+
+It counts the plans by outcome (tests selected through changed packages, L1 at the root with its causes, L1 in a package, L3, nothing selected), and the why-paths that end at a package the plan did not report as changed. It prints canonical JSON with every plan.
+
+The clones are at `~/Projects/trommel-clones` (HANDOFF §12). [results/2026-11-20-lockfile-corpus-win32.json](results/2026-11-20-lockfile-corpus-win32.json) summarizes the six repositories, before and after DECISIONS 40's two fixes: counts by outcome and the top ten L1 causes. The per-commit output, 2.2 MB, is not committed; the script makes it again in about 27 minutes, 18 of them on prettier (9,805 files, 292 plans).
+
+| Repository | Lockfile versions read | Plans | Run every test | L1 at the root | L3 |
+|---|---|---|---|---|---|
+| hono | 12 of 32 (20 bun) | 10 | 10 | 0 | 8 |
+| excalidraw | 18 of 18 | 0 | — | — | — |
+| vuejs/core | 125 of 125 | 77 | 77 | 66 | 0 |
+| es-toolkit | 25 of 25 | 3 | 3 | 3 | 0 |
+| typescript-eslint | 227 of 227 | 166 | 164 | 159 | 0 |
+| prettier | 552 of 552 | 292 | 292 | 292 | 0 |
+
+Before the fixes, 888 of the 979 versions read and all 548 plans ran every test, 48 of them as L3.

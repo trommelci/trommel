@@ -1,7 +1,7 @@
 # Hand-off: Trommel milestone M1, after roadmap day 10
 
 - **Written:** 2026-11-11 (UTC), at `main` = `00fea91` plus this document.
-- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for SMAP v0 (DECISIONS 33 and 34): item 4 is done, and the map on disk is a SMAP file. Updated on 2026-11-16 for pnpm and yarn lockfiles (DECISIONS 36 and 37): they are parsed, and the engine is `trommel-static-4`. Updated on 2026-11-19 for `trommel explain` (DECISIONS 38), and for the corpus collector, whose backlog is cleared (§5.3). Updated on 2026-11-20 for the collector's artifact downloads, which now follow a moved repository's redirect (DECISIONS 39, §5.3).
+- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for SMAP v0 (DECISIONS 33 and 34): item 4 is done, and the map on disk is a SMAP file. Updated on 2026-11-16 for pnpm and yarn lockfiles (DECISIONS 36 and 37): they are parsed, and the engine is `trommel-static-4`. Updated on 2026-11-19 for `trommel explain` (DECISIONS 38), and for the corpus collector, whose backlog is cleared (§5.3). Updated on 2026-11-20 for the collector's artifact downloads, which now follow a moved repository's redirect (DECISIONS 39, §5.3), and for the lockfile corpus check on six cloned repositories, with its two fixes (DECISIONS 40).
 - **For:** whoever continues the implementation, person or agent.
 - **Reading order:** this file, then [DECISIONS.md](DECISIONS.md), then the docs it points to.
 
@@ -79,6 +79,16 @@
   - It loads the head and the map with `plan`'s own code, calls `selectStatic` and takes the verdict from the plan, so the two cannot disagree. The paths come from `forwardTree`, a forward search from the test, and the seed the plan names keeps the plan's own path.
   - Nothing the planner reads changed: the engine stays `trommel-static-4`, no golden hash moved, and no run-all plan is expected.
   - 1,001 tests pass in 46 files.
+- **The lockfile corpus check (2026-11-20, branch `m1/lockfile-corpus-check`, DECISIONS 40):**
+  - With Ojas's approval, six corpus repositories are cloned at `~/Projects/trommel-clones` (§12): honojs/hono, excalidraw/excalidraw, vuejs/core, toss/es-toolkit, prettier/prettier and typescript-eslint/typescript-eslint. They are also the proposed golden-graph repositories (§8).
+  - `bench/lockfile-corpus.ts` reads every root lockfile of a year of first-parent history and plans every lockfile-only commit, and every dependency commit (lockfiles and `package.json` files only), as CI would. On the six, before the fixes below: 888 of 979 lockfile versions read, and all 548 plans ran every test.
+  - **Two fixes it led to:**
+    - A root lockfile is no longer an unreached input when a script names a directory above it with `new URL(…, import.meta.url)` (DECISIONS 26): the p: nodes carry what the install reads. vuejs/core's `rollup.config.js`, typescript-eslint's `eslint.config.mjs` and six of prettier's scripts name the root.
+    - Yarn Berry lockfiles of `__metadata` versions 6 and 9 are read: 49 versions of typescript-eslint's, before its move to pnpm, and 22 of prettier's.
+  - **After them:** 959 of 979 versions read; only hono's 20 bun lockfiles, before its move to pnpm on 2026-09-24, are refused, by design. 8 of the 548 plans are L3, all on hono's bun lockfile, and 546 still run every test. 520 escalate the root because a bumped package that no test reaches is an unmapped input (DECISIONS 29), which nearly every real bump contains. This is the open decision of §10 item 18.
+  - Where a change reached tests through a package, the why-paths name the changed package every time.
+  - On the last 70 commits of this repository the plans are identical to those of the CLI on `main`: 555 of 2,821 possible test-file runs. The engine stays `trommel-static-4`, and no golden hash moved.
+  - 1,016 tests pass in 46 files.
 
 **First four things to do:**
 1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 4 of its worklist are done. M2 is item 5, and the rest of M1 is in §8.
@@ -179,7 +189,7 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `1009 passed` from `npm test` (after DECISIONS 39; elsewhere than Windows, 1008 and 1 skipped), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `1016 passed` from `npm test` (after DECISIONS 40; elsewhere than Windows, 1015 and 1 skipped), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
@@ -208,13 +218,13 @@ node packages/cli/src/main.ts explain packages/cli/test/report.test.ts --to pack
 | `packages/core/src/resolve/resolver.ts` | Resolution over a `Vfs`, the git view of a snapshot. Probes the union of TypeScript, Vite and Jest candidate orders, and records targets, absent paths, `d:` directories, configs and `g:` sets. Covers tsconfig `paths`/`baseUrl`/`extends`, `exports`/`imports`, workspaces, `__mocks__` and symlinks. Evidence that depends on one path or one directory is an `r:` or `c:` hub, worked out once and shared (DECISIONS 32); a `Resolution` lists everything plus its `hubs` and its `direct` part | `Resolver.resolve({from, specifier, kind, patterns?, base?})`, `Resolver.hub(key)`, `Resolver.fileConfigs()`, `Resolver.workspaces()`, `Resolver.ownerDir()` (nearest `package.json`, for resolution), `Resolver.packageOf()` (deepest workspace member, for escalations), `MemoryVfs`, `exportsTargets`, `joinPath`, `dirname` | `test/resolve/resolver.test.ts` (fixtures, hubs, `fileConfigs`, `packageOf`, plus the evidence-completeness and hub-split properties); fixtures in `test/fixtures/resolve/` |
 | `packages/core/src/resolve/{jsonc,yaml,glob}.ts` | JSONC (tsconfig), the pnpm-workspace YAML subset, globs | `parseJsonc`, `parsePnpmWorkspace`, `globToRegExp`, `escapeGlob` | `test/resolve/formats.test.ts` (34) |
 | `packages/core/src/lockfile/npm.ts` | package-lock v2/v3 → `p:npm:<install location>`, with Node-style `locate` and package-to-package dependencies, adapted to the `Lockfile` interface by `npmLockfile` (DECISIONS 37). Lockfile detection at the root: npm, pnpm and yarn are read; bun, npm v1 and more than one lockfile are `unparseable` (L3) | `parseNpmLockfile`, `npmLockfile`, `detectLockfile`, `LOCKFILE_PATHS` | `test/lockfile/npm.test.ts` |
-| `packages/core/src/lockfile/{yaml,lockfile,model,pnpm,yarn-berry,yarn-classic}.ts` | The pnpm and yarn readers (DECISIONS 36), which the builder and the planner use (DECISIONS 37). `yaml.ts` is a strict YAML subset; `model.ts` is the resolved model, `lockfileFromModel` (`p:pnpm:` and `p:yarn:` entries, lookups, name nodes `<name>@*`, `p:pnpm:#env`) and `modelProblem`; `lockfile.ts` is the `Lockfile` interface every format offers, and `diffLockfiles` | `parsePnpmLockfile`, `parseYarnBerryLockfile`, `parseYarnClassicLockfile`, `lockfileFromModel`, `parseYamlSubset`, `diffLockfiles` | `test/lockfile/{yaml,model,pnpm,yarn-berry,yarn-classic,fuzz,lockfile}.test.ts` |
+| `packages/core/src/lockfile/{yaml,lockfile,model,pnpm,yarn-berry,yarn-classic}.ts` | The pnpm and yarn readers (DECISIONS 36), which the builder and the planner use (DECISIONS 37). Berry `__metadata` 6, 8, 9 and 10 are read; version 6 writes npm ranges without their protocol (DECISIONS 40). `yaml.ts` is a strict YAML subset; `model.ts` is the resolved model, `lockfileFromModel` (`p:pnpm:` and `p:yarn:` entries, lookups, name nodes `<name>@*`, `p:pnpm:#env`) and `modelProblem`; `lockfile.ts` is the `Lockfile` interface every format offers, and `diffLockfiles` | `parsePnpmLockfile`, `parseYarnBerryLockfile`, `parseYarnClassicLockfile`, `lockfileFromModel`, `parseYamlSubset`, `diffLockfiles` | `test/lockfile/{yaml,model,pnpm,yarn-berry,yarn-classic,fuzz,lockfile}.test.ts` |
 | `packages/core/src/index.ts` | The package's public exports. Workspace packages export `./src/*.ts` directly (DECISIONS 3) | — | — |
 | `packages/core/src/git/{cat-file,vfs}.ts` | `git cat-file --batch` parser; `GitVfs`, the resolver's `Vfs` over a `TreeIndex` with blobs from git | `readBlobs(cwd, oids)`, `CatFileParser`, `GitVfs.load`, `repoRoot` | `test/git/cat-file.test.ts`, `test/git/vfs.test.ts`, `test/git/git.test.ts` |
 | `packages/core/src/graph/{static,map}.ts` | The static graph builder and the map as the planner holds it (`TrommelMap`; on disk it is SMAP, and `trommel graph` prints it as canonical JSON): node keys and hashes, edges, `u:` nodes (DECISIONS 23), `r:` and `c:` hubs (DECISIONS 32). A function of the tree, the config and the engine only (DECISIONS 28). `readLockfile` reads any of the four lockfile kinds, with classic yarn's workspace from the members' `package.json` files; the engine is `trommel-static-4` (DECISIONS 37) | `buildStaticMap`, `ENGINE`, `hubHash`, `isHub`, `mapGraph`, `mapIndex`, `MapError`, `readLockfile`, `isModule`/`isLexed` | `test/graph/static.test.ts`, `test/graph/map.test.ts`, `test/graph/golden.test.ts` (the pinned fixture hash) |
 | `packages/core/src/smap/{bytes,container,smap}.ts` | SMAP v0 (ADR-0009, [docs/smap-format.md](docs/smap-format.md), DECISIONS 33): varints, strings and front coding; the container with its trailer and layer addresses; the snapshot and static layers to and from `TrommelMap`. `trommel graph --out` writes it, and `trommel plan` reads it (DECISIONS 34). Lockfile kinds 3 to 5 are pnpm, yarn Berry and classic yarn (DECISIONS 37) | `encodeSmap`, `decodeSmap` (map, graph, layer addresses), `SmapEncodeError` | `test/smap/{bytes,container,smap,golden,fuzz}.test.ts` (219); `test/fixtures/smap/golden.smap` |
 | `packages/core/src/environment.ts` | Environment components for the M2 recorder: runtime, platform and tracked variables. No caller yet, and lint keeps it out of the graph and selection modules (DECISIONS 28) | `environment`, `envHash` | `test/environment.test.ts` (6) |
-| `packages/core/src/select/plan.ts` | Δ(S,H) from a map to a head snapshot, escalations L1/L3, reverse BFS with why-paths (DECISIONS 24). Unmapped inputs seed their owning package (DECISIONS 29). Hubs are recomputed at H when a listing changed (DECISIONS 32). Every `p:` node is recomputed from the head lockfile, whatever its format, and a change of lockfile kind or path is L3 (DECISIONS 37) | `selectStatic`, `runAll` | `test/select/plan.test.ts` (examples plus the 2,000-run soundness property); `test/select/lockfile-soundness.test.ts` (the 2,800-run lockfile property), with its generator and oracle in `test/select/install-tree.ts` |
+| `packages/core/src/select/plan.ts` | Δ(S,H) from a map to a head snapshot, escalations L1/L3, reverse BFS with why-paths (DECISIONS 24). Unmapped inputs seed their owning package (DECISIONS 29). Hubs are recomputed at H when a listing changed (DECISIONS 32). Every `p:` node is recomputed from the head lockfile, whatever its format, and a change of lockfile kind or path is L3 (DECISIONS 37). The root lockfile is never an unreached input (DECISIONS 40) | `selectStatic`, `runAll` | `test/select/plan.test.ts` (examples plus the 2,000-run soundness property); `test/select/lockfile-soundness.test.ts` (the 2,800-run lockfile property), with its generator and oracle in `test/select/install-tree.ts` |
 | `packages/core/src/select/explain.ts` | One test's decision in the static plan, for `trommel explain` (DECISIONS 38). The verdict, a forced test's reason and the plan's path come from the `Selection` alone. A forward tree from the test adds every seed it reaches with a shortest path (the plan's own for the seed the plan names), how many nodes it depends on, and the answer for one `--to` node | `explainTest` | `test/select/explain.test.ts` (12, with a 500-run property against `selectStatic`); the random repositories it shares with `plan.test.ts` are in `test/select/repos.ts` |
 | `packages/cli/src/` | `trommel graph`, `diff`, `plan`, `explain`: `args.ts` (parseArgs, kickoff gap 1), `config.ts` (§5.1 validation, test discovery), `report.ts` (plan JSON, matrix, summary), `explain.ts` (paths from the current directory, the `--to` node, the text of an explanation), `cli.ts` (`headAt` and `planAt` load the head and the map for both `plan` and `explain`), `main.ts`. `bin: trommel` | `node packages/cli/src/main.ts --help` | `test/{args,config,report,explain,cli}.test.ts` (`cli.test.ts` is end to end) |
 | `packages/vitest`, `packages/jest` | Placeholders for M2 | — | — |
@@ -223,7 +233,7 @@ node packages/cli/src/main.ts explain packages/cli/test/report.test.ts --to pack
 | `scripts/` | CI guards: `check-zero-deps.ts`, `check-dco.ts` (logic in `scripts/lib/`). `lib/test-files.ts` turns a shard's `TROMMEL_TEST_FILES` list into Vitest's `include` (DECISIONS 25) | `npm run check:deps`, `npm run check:dco` | `scripts/test/*` (37) |
 | `trommel.config.json` | Trommel's config for this repository: 3 shards, one declared input for the CLI end-to-end test, and `inputs.ignore` for benchmarks, CI guard entry points and the lint config (DECISIONS 29) | — | — |
 | `.github/workflows/trommel.yml` | The walking skeleton: `plan`, `test` (one job per shard), `trommel-gate`, and `map` on pushes to `main` (DECISIONS 25) | — | — |
-| `bench/` | `TARGETS.md` (pre-registered), `CORPUS.md` (selection criteria, first-pass vetting, lockfile formats), `README.md` (recorded numbers), `results/*.json`, scripts `ls-tree.ts`, `lex.ts`, `graph.ts`, `static-graph.ts`, `lockfile.ts` | — | — |
+| `bench/` | `TARGETS.md` (pre-registered), `CORPUS.md` (selection criteria, first-pass vetting, lockfile formats), `README.md` (recorded numbers), `results/*.json`, scripts `ls-tree.ts`, `lex.ts`, `graph.ts`, `static-graph.ts`, `lockfile.ts`, `lockfile-corpus.ts` (the corpus check of DECISIONS 40, run on a clone) | — | — |
 | `.github/workflows/ci.yml` | `static` (deps, lint, typecheck; Node 26), `test` (Ubuntu, Node 22/24/26), `windows` (Node 22), `dco` (PRs only) | — | — |
 
 ## 5. The corpus collector
@@ -454,10 +464,10 @@ PRs can restore caches saved on the base branch. Verifying the trust rules for `
 ## 8. After day 10: the rest of M1
 
 These come from the M1 row of [roadmap §1](docs/roadmap.md):
-- ~~**pnpm and yarn lockfile parsers.**~~ Done (DECISIONS 36 and 37), except the corpus check.
+- ~~**pnpm and yarn lockfile parsers.**~~ Done (DECISIONS 36, 37 and 40), the corpus check included.
   - 24 of the 26 vetted repositories use them (19 pnpm, 5 yarn), so they gate the replay corpus in M4 ([bench/CORPUS.md](bench/CORPUS.md)).
-  - pnpm 9.0, yarn Berry 8 and 10, and classic yarn are read into one model with a YAML subset of their own (`core/lockfile/`), and the builder, the planner and `trommel diff` use them. The engine is `trommel-static-4`.
-  - **Still to do:** the corpus check of the design's §9.4 on hono and excalidraw, once Ojas approves the clones (§10). DECISIONS 37 lists its checks.
+  - pnpm 9.0, yarn Berry 6, 8, 9 and 10, and classic yarn are read into one model with a YAML subset of their own (`core/lockfile/`), and the builder, the planner and `trommel diff` use them. The engine is `trommel-static-4`.
+  - The corpus check of the design's §9.4 ran on all six clones (DECISIONS 40). The readers read every pnpm and yarn version of a year of history. Package-level selection works where it gets the chance, but under DECISIONS 29 nearly every real dependency bump still runs everything (§10 item 18).
 - **The four M1 items of §1.1,** before SMAP: ~~selector backstops~~ (done, DECISIONS 29), ~~the environment out of the map~~ (done, DECISIONS 28), ~~resolution hubs~~ (done, DECISIONS 32), then ~~SMAP v0 itself~~ (done, DECISIONS 33 and 34).
 - ~~**SMAP v0, byte-identical across OSes.**~~ Done (DECISIONS 33 and 34).
   - The codec is built, and `smap/golden.test.ts` pins the SMAP file of the golden repository on every CI OS: its length, its SHA-256 and the address of each layer. `graph/golden.test.ts` still pins the same map as canonical JSON, so a failure in one alone says which side moved.
@@ -467,7 +477,7 @@ These come from the M1 row of [roadmap §1](docs/roadmap.md):
 - ~~**`trommel explain`.**~~ Done (DECISIONS 38).
   - `trommel explain <test> [--to <file|node>] [--map <dir>] [--head <rev>] [--json]` explains what the static plan decides for one test file: every changed or uncertain node it reaches with a shortest path to each, a forced test's reason, or how many nodes a would-skip depends on. `--to` gives the test's path to one file or map node, or says the map has none.
   - It calls `selectStatic` as `plan` does and takes the verdict from the `Selection`, so the two cannot disagree. The planner did not change. Explaining a recorded plan or a plan id comes with proofs in M3.
-- **Golden graphs for 6 repositories.** These need clones, so ask first.
+- **Golden graphs for 6 repositories.** The six clones of §12 are approved for this (2026-11-20): hono, excalidraw, vuejs/core, es-toolkit, prettier and typescript-eslint. prettier has 9,805 files, close to T6's 10,000. What gets committed, and how a change to a golden graph is reviewed, is not designed yet.
 - **T6:** a 10,000-file graph in under 30 s cold and under 3 s incremental. Cold is 1.8 s with hubs; incremental is not measured, and extraction is not cached. The lexer alone is about 3 s per 100 MB.
 - ~~**Measure the probe-edge volume.**~~ Done on 2026-11-13: 84% of edges at 10,000 files. The answer, hub nodes, is built (§1.1 item 3, DECISIONS 32).
 - **The open items from the kickoff brief, §7:**
@@ -492,6 +502,8 @@ These come from the M1 row of [roadmap §1](docs/roadmap.md):
 | The lockfile cut-over against `main`'s planner, this repository's last 70 commits | Identical selections, why-paths and escalations on all 70: 728 of 2,337 test-file runs; each map differs only by the engine id | DECISIONS 37 |
 | Static selection soundness | 2,000 random repository pairs; 20 hand mutants caught | `packages/core/test/select/plan.test.ts` |
 | Lockfile soundness | 2,800 generated installs (pnpm, Berry `node-modules`, Plug'n'Play, classic yarn), passing at 51 seeds; only the two hoisting residuals of §11 are tolerated | `packages/core/test/select/lockfile-soundness.test.ts`, DECISIONS 37 |
+| The lockfile corpus check, six clones, a year of history each | 959 of 979 lockfile versions read (888 before the fixes of DECISIONS 40); 548 lockfile-only and dependency commits planned, 546 of them run every test, 520 of those as L1 at the root for an unreached package bump | `bench/results/2026-11-20-lockfile-corpus-win32.json`, DECISIONS 40 |
+| The corpus check's fixes against `main`'s planner, this repository's last 70 commits | Identical selections, why-paths and escalations on all 70: 555 of 2,821 test-file runs | DECISIONS 40 |
 
 All measured on Windows 11, Ryzen AI 7 350, Node 26.4 and git 2.55. There are no Linux numbers yet.
 
@@ -519,9 +531,13 @@ The review recommends an answer to each of 1, 2, 4 and 5 in its §4. In short: m
 
 **Added by the lockfile cut-over (2026-11-16, DECISIONS 37).**
 
-15. Cloning `honojs/hono` and `excalidraw/excalidraw` for the corpus check of the lockfile design's §9.4. Its result completes DECISIONS 37.
+15. ~~Cloning `honojs/hono` and `excalidraw/excalidraw` for the corpus check of the lockfile design's §9.4.~~ Answered 2026-11-20: cloned, with vuejs/core, toss/es-toolkit, prettier/prettier and typescript-eslint/typescript-eslint, for the check and the golden graphs (§12). The check is DECISIONS 40.
 16. Confirming rulings R9, R10 and R11, which decide the misses the lockfile soundness property tolerates. DECISIONS 37 states each.
 17. Whether phantom dependencies (§11) stay a known gap. The whole-branch review found the gap, and nobody has decided it yet.
+
+**Added by the lockfile corpus check (2026-11-20, DECISIONS 40).**
+
+18. **Whether a bumped package that no test reaches should keep escalating the root (DECISIONS 29).** On the six clones it does for 520 of 548 dependency and lockfile-only commits, so nearly every real dependency bump runs everything. The packages are mostly dev tools (eslint plugins, vite, vitest's coverage, knip, nx, the Angular compiler), and the escalations name 80 to 1,937 distinct package nodes per repository. So per-repository `inputs.ignore` lists, the design's plan for the replay, would be long. One option is to stop escalating for an unreached package, which drops the protection against something outside the graph loading it, such as a runner plugin named only in the runner's config. The other is to keep the rule and accept run-all for bumps until records exist (M2/M3). Nothing is blocked on it now; M4's replay is.
 
 ## 11. Known gaps and limits in the merged code
 
@@ -537,6 +553,8 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
 - **Static selection (day 9, DECISIONS 23–24).**
   - Every would-skip is unproven: anything a test reads through `fs` (fixtures, snapshots) is invisible statically. An unmapped input escalates its owning package (L1), which covers most of it: the package's own tests, and every test elsewhere that reaches the package (DECISIONS 29).
   - A lockfile bump of a package that no test imports, such as eslint, runs everything: the package belongs to the root. `inputs.ignore` can name its install location (`node_modules/eslint`), which in pnpm and yarn also matches its lockfile entries and its name node. An unreached glob also escalates the root, and cannot be ignored.
+    - **On real repositories this decides almost every dependency bump** (DECISIONS 40, §10 item 18). Of 548 lockfile-only and dependency commits in a year of six corpus repositories, 520 escalate the root this way, and 546 run every test.
+    - The root lockfile itself never escalates as an unreached input, even when a script that names the root directory makes it a file node (DECISIONS 40): the `p:` nodes carry what the install reads.
   - An added module is not in the map, so it never counts as unreached (entry 24's exemption). Whatever starts to use it shows up as a change of its own.
   - The review's DECLARED edge from every test to its runner's package node is not built. A runner package that no test reaches escalates when it changes; one that tests import is reached through them.
   - Every test that reaches an uncertain file always runs, whether or not anything changed.
@@ -556,12 +574,14 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
     - **Classic yarn's peers.** The lockfile does not record peers, so they are not edges. A test that reaches a package but not its peer misses a bump of the peer.
     - **Phantom dependencies** (found by the whole-branch review; not yet decided, §10 item 17). A package that requires a name it does not declare, and finds it by hoisting or through pnpm's `.pnpm/node_modules`, has no edge to it. npm has the same gap.
     - **The name node's precision cost on pnpm monorepos.** A file that imports a name its own workspace package does not declare depends on that name's name node, which changes whenever any copy of the name is bumped, added or removed, or a package that depends on it is bumped. So where tests import a root-declared vitest, a bump of a `@vitest/*` package reruns those tests. Reading pnpm's `node-linker` would let the isolated layout walk up to the declaring importer exactly.
-    - bun lockfiles, pnpm other than 9.0, Berry other than 8 and 10, and npm v1 are unparseable, so any change to them runs everything (L3). Only root lockfiles are read.
+    - bun lockfiles, pnpm other than 9.0, Berry other than 6, 8, 9 and 10, and npm v1 are unparseable, so any change to them runs everything (L3). Only root lockfiles are read.
+    - In a Berry lockfile, a descriptor that `resolutions` rewrote is unresolved and takes the name node (design §6.5). typescript-eslint's version-6 lockfile has 74 such references of 4,502 (typescript, `@types/node` and four more it pins).
   - **`trommel explain`** (DECISIONS 38) explains the static plan from a map and a head, not a recorded plan. Its "does not reach" and "is not in the map" are static reachability, so they say nothing about what a test reads through `fs`. A `--to` value such as `c:foo`, a Windows drive-relative path, is read as a node key.
   - Precision costs seen on hono:
     - A version bump in the root `package.json` reruns every test, because each file depends on its whole nearest `package.json`. Hashing only the fields that change module semantics (`type`, `exports`, `imports`, `main`, dependencies) would fix it.
     - A self-import whose `exports` point at build output (`dist/`) is unresolved, so it is uncertain.
     - `bun:` specifiers count as unknown virtual modules.
+  - Precision cost seen on vuejs/core (DECISIONS 40): 97 to 196 of its 195 to 197 test files reach an uncertain file, so they run on every plan whatever changed.
 - **Walking skeleton (day 10, DECISIONS 25).**
   - Every test runs twice on a PR, once in `ci.yml` and once in the shards, until shadow mode gives way to real skips.
   - Shards are split round-robin, not by duration.
@@ -595,6 +615,7 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
 - **Line endings.** `* text=auto eol=lf` keeps the working tree LF even with `core.autocrlf=true`.
 - **Git worktrees.** A worktree under `.claude/worktrees/` has no `node_modules` of its own, so `@trommel/core` resolves to the main checkout's sources, not the worktree's. Link the worktree's packages into its own `node_modules/@trommel/` (directory junctions, no download) and delete `node_modules/.vitest-cache`, or tests and the CLI run stale code. PowerShell's `New-Item -ItemType Junction` does it; `mklink` is awkward to quote from Git Bash.
 - **Credentials.** `gh` is authenticated as `ojassug`.
+- **Corpus clones** (approved 2026-11-20) are at `~/Projects/trommel-clones`, beside the main checkout, one folder per repository, `<owner>__<name>`. They are full clones with no checkout: Trommel reads git objects, never a working tree. HEADs at cloning: hono `75ff8e3e`, excalidraw `2c3dcc06`, vuejs/core `7de9e41b6`, es-toolkit `24e7a7b8`, prettier `ed0887e1b`, typescript-eslint `c4bddb15e`. Read them only through git and pass their paths as arguments; never run their scripts or install their dependencies. `results/` beside them holds the raw output of DECISIONS 40's corpus check.
 - **Scratch scripts are not in the repo:** the vetting and survey scripts behind CORPUS.md, and the hand-mutation helper.
   - The method is described in CORPUS.md and in the PR descriptions of #2 and #4–#7.
   - Committing the vetting script as `tools/corpus/src/vet.ts` would make CORPUS.md reproducible.
@@ -644,6 +665,7 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
 | 37 | The lockfile cut-over: one `Lockfile` interface, SMAP kinds 3 to 5, engine `trommel-static-4`, the planner on every format, the soundness property and its residuals (rulings R9 to R11), the 70-commit replay, the corpus check still to run |
 | 38 | `trommel explain`: the static plan's decision for one test, never recomputed; `forwardTree` paths with the plan's own for the seed it names; `--to`, with key-shaped values read as keys; the default map at the repository root; paths through short names and links; text by default, `--json` canonical; exit codes |
 | 39 | Artifact downloads follow a moved repository's redirect: any redirect status, the token kept within the API's origin and never sent off it, at most three redirects within the API |
+| 40 | The lockfile corpus check on six clones; the root lockfile no unreached input; Berry `__metadata` 6 and 9 read; the engine stays `trommel-static-4`; nearly every real dependency bump still runs everything under entry 29 |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 

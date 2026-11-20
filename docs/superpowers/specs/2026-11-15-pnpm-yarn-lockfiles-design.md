@@ -1,7 +1,7 @@
 # pnpm and yarn lockfiles: design
 
 - **Written:** 2026-11-15, at `main` = `74ca9b4` (SMAP v0 is the map on disk; engine `trommel-static-3`).
-- **Status:** approved by Ojas on 2026-11-15, after he chose approach A of §4 and answered the three review questions of §12. Amended on 2026-11-16 (`ce741d0`) for rulings R9–R11, which await Ojas's confirmation.
+- **Status:** approved by Ojas on 2026-11-15, after he chose approach A of §4 and answered the three review questions of §12. Amended on 2026-11-16 (`ce741d0`) for rulings R9–R11, which await Ojas's confirmation. §9.4's corpus check ran on 2026-11-20 on six clones (DECISIONS 40); it led to reading Berry `__metadata` 6 and 9 as well, and to the root lockfile never escalating as an unreached input.
 - **Scope:** the first item of [HANDOFF.md](../../../HANDOFF.md) §8, "pnpm and yarn lockfile parsers", from the M1 row of [roadmap](../../roadmap.md) §1.
 - **Decided already, and not reopened here:** architecture §3.1's `p:` nodes and §3.5's row "lockfile changed but unparseable → L3", read by [DECISIONS.md](../../../DECISIONS.md) entry 23 as "only when it changes"; entry 18 for npm; entry 32's rule that a hub's hash covers what it points at; ADR-0002, zero runtime dependencies.
 - **Evidence:** §5, gathered on 2026-11-15 with Ojas's approval: the lockfile headers of the 24 corpus repositories, and five sample lockfiles in full.

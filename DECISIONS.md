@@ -1077,3 +1077,58 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
   - Lint, typecheck and the zero-dependency check are clean. The collector's output formats did not change; a download through a moved repository costs one more request.
 - **Not done.**
   - **Not yet seen in a run.** The collector runs at `main`, so the fix applies from the first daily run after it merges. The artifact expires at 2026-11-22T20:23Z, so the run on 2026-11-22, which starts around 11:00 UTC, is the last that can mirror it. After that the listing marks it expired, the collector skips it, and the day completes without the archive.
+
+## 40. The lockfile corpus check: the root lockfile is no unreached input, Berry 6 and 9 are read (2026-11-20)
+
+- **Context.** Entry 37 left the corpus check of the lockfile design's §9.4 undone until Ojas approved clones. On 2026-11-20 he approved six: honojs/hono and excalidraw/excalidraw, which the design names, and vuejs/core, toss/es-toolkit, prettier/prettier and typescript-eslint/typescript-eslint, which are also the proposed golden-graph repositories (HANDOFF §8). They are full clones with no checkout, at `~/Projects/trommel-clones` (HANDOFF §12).
+- **Decision.**
+  - **The check is `bench/lockfile-corpus.ts`,** run on one clone at a time. Over the first-parent history of a year before the clone's HEAD it does three things:
+    - it reads the root lockfile of every commit that changed one, as the builder reads it (`readLockfile`), and lists each refusal with its reason;
+    - it plans every lockfile-only commit as CI would: `trommel graph` at the first parent, then `trommel plan --shadow --static` at the commit, in the same process;
+    - it plans every dependency commit the same way: one that changes root lockfiles and `package.json` files and nothing else.
+    - Each plan is counted by outcome: tests selected through changed packages, L1 at the root with its causes, L1 in a package, L3, or nothing selected. The script also counts why-paths that end at a package the plan did not report as changed.
+    - **Why dependency commits too:** the design asked for lockfile-only commits on hono and excalidraw, and there were almost none. hono had 2 in the year, both before it moved from bun to pnpm on 2026-09-24, and excalidraw had none: every lockfile change came with other files. Most real bumps change a `package.json` as well.
+    - **Why six repositories:** with two, the check would have measured almost nothing. The four more cover Berry 8 and 10, two large pnpm monorepos, and about 470 more commits.
+  - **The root lockfile is no unreached input** (`select/plan.ts`). A script that names a directory above the lockfile with `new URL(…, import.meta.url)` depends on every file below it (entry 26), the lockfile included, so the lockfile is a file node. When no test reached the script, every change to the lockfile escalated the root under entry 29, although the planner leaves a lockfile that is no node to its `p:` nodes. Now the unreached-node rule skips an `f:` node at a root lockfile path, as the rule for files outside the graph always did.
+    - A test that does reach the lockfile file still runs on every change to it, through that node.
+    - The check found the pattern in vuejs/core's `rollup.config.js`, typescript-eslint's `eslint.config.mjs` and six of prettier's scripts.
+    - The rule skips `f:` keys only: `p:pnpm:#env`, whose path is also `pnpm-lock.yaml`, still escalates when no test reaches it.
+  - **Berry lockfiles of `__metadata` versions 6 and 9 are read** (`lockfile/yarn-berry.ts`). Version 9 has the shape of 8 and 10. Version 6 (yarn 3) writes a dependency's npm range as the manifest has it, `b: ^2.0.0`, while the keys carry yarn's default protocol, `b@npm:^2.0.0`. So in version 6 alone, a range no key holds is looked up again as `npm:<range>`. A range that names its protocol, such as `workspace:^`, is found as before. Versions 8 and later write the protocol in both places, so they get no fallback.
+    - Version 4 (yarn 2) and 7 are still refused. The refusal now names the four versions read.
+  - **The engine stays `trommel-static-4`** (entry 26's rule). Hash definitions and the reading of a map are unchanged, and the builder only reads lockfiles it used to refuse.
+    - An older map of a repository with a version-6 or 9 lockfile recorded the lockfile as unparseable. The new planner reads the head's as Berry, so it plans every test once, as a change of lockfile kind (entry 37).
+    - No golden fixture has such a lockfile, so neither golden hash moved.
+- **Evidence.**
+  - **Before the fixes,** with `main`'s core at `db47139`, on the six clones (a year to each clone's HEAD):
+    - 888 of 979 lockfile versions read. The 91 refusals: hono's 20 bun lockfiles (not read by design), 49 versions of typescript-eslint's `yarn.lock` at metadata 6, before its move to pnpm, and 22 of prettier's at metadata 9.
+    - 548 plans: 75 lockfile-only commits and 473 dependency commits. All 548 ran every test. 48 were L3 (hono's bun 8, typescript-eslint 25, prettier 15), 498 L1 at the root, and 2 on hono selected everything through a root `package.json` change.
+    - In 16 of the L1 plans (vuejs/core 11, typescript-eslint 5) the lockfile file was the only cause.
+  - **After them:**
+
+    | Repository | Lockfile versions read | Plans | Run every test | L1 at the root | L3 | Distinct L1 causes |
+    |---|---|---|---|---|---|---|
+    | hono (pnpm since 2026-09-24) | 12 of 32 | 10 | 10 | 0 | 8 | 0 |
+    | excalidraw (classic) | 18 of 18 | 0 | — | — | — | — |
+    | vuejs/core (pnpm) | 125 of 125 | 77 | 77 | 66 | 0 | 618 |
+    | es-toolkit (Berry 8) | 25 of 25 | 3 | 3 | 3 | 0 | 80 |
+    | typescript-eslint (pnpm, Berry 6 before) | 227 of 227 | 166 | 164 | 159 | 0 | 1,398 |
+    | prettier (Berry 9 and 10) | 552 of 552 | 292 | 292 | 292 | 0 | 1,937 |
+
+    - "Distinct L1 causes" is the larger of the two kinds of commit; the causes name package nodes almost always.
+    - 959 of 979 versions read: only hono's bun lockfiles are refused.
+    - **Every L3 is hono's bun lockfile,** so no lockfile-only or dependency commit on a pnpm or yarn lockfile escalates to L3 because it cannot be read: the design's first condition.
+    - **The why-paths name the changed packages:** in the 50 plans where tests were reached through a changed package (vuejs/core 5, typescript-eslint 45), no why-path ends at a package the plan did not report as changed. That is the second condition.
+    - **The L1 commits are counted with their causes** in the results file, top ten per repository: the third.
+    - **But 546 of 548 still run every test.** 520 escalate the root because a bumped package that no test reaches is an unmapped input (entry 29). The packages are mostly dev tools: eslint plugins, vite, vitest's coverage, knip, nx and the Angular compiler. 2 escalate a package of typescript-eslint, and only 2 of its plans run a subset: 277 of 291 tests and 276 of 289.
+    - The design expected many L1 plans and counted on per-repository `inputs.ignore` lists for the replay. With 80 to 1,937 distinct package nodes behind them, that plan is now a question for Ojas (HANDOFF §10 item 18).
+    - On vuejs/core, 97 to 196 of the 195 to 197 test files reach an uncertain file, so they run on every plan whatever changed (HANDOFF §11).
+  - **Recorded** in `bench/results/2026-11-20-lockfile-corpus-win32.json`, before and after for each repository: counts by outcome and the top ten L1 causes. The per-commit lists (2.2 MB of raw output) are not committed; the script makes them again from a clone in about 27 minutes, 18 of them on prettier.
+  - **Tests.** 7 new, so 1,016 pass in 46 files on Windows 11, where entry 39 had 1,009 (elsewhere 1,015 pass and 1 is skipped). Lint, typecheck and the zero-dependency check are clean.
+    - `plan.test.ts`, 2: a root script with `new URL('.', import.meta.url)` makes `f:package-lock.json` a node, and a lockfile bump then selects the lodash importer with no escalation; a test that reaches the lockfile file runs on its change. The first failed before the fix with the corpus's own cause, "package-lock.json changed and no test reaches it".
+    - `yarn-berry.test.ts`, 5: version 9 gives the model version 10 gives; version 6 resolves a bare range through `npm:`, keeps a range with a protocol, and leaves a range no key holds unresolved; version 10 gets no fallback; versions 4 and 7 are refused. The case that refused version 6 is gone. Four failed before the change.
+    - **Hand mutants, all caught:** the unreached-node exemption for every key at a lockfile path, `f:` or not (fails the `p:pnpm:#env` test); the version-6 fallback for every version (fails the version-10 test).
+  - **The real samples.** prettier's version-9 lockfile reads like its version-10 one, with 1 unresolved reference in 1,827: the `remark-parse` redirect that entry 36 found in version 10. typescript-eslint's version-6 lockfile reads with 74 unresolved references in 4,502, and all are descriptors its `resolutions` rewrote (`typescript@*` keyed as `typescript@npm:5.9.2`, and `@types/node`, `@types/estree`, `@types/react`, `@types/eslint-scope` and `tsx`). Those take the name node, as in versions 8 and 10 (design §6.5).
+  - **This repository's last 70 commits,** planned by `main`'s CLI and by this branch's, are identical in the tests that would run, their why-paths, the forced tests and the escalations: 555 of 2,821 possible test-file runs. No root script here names the root directory (entry 26), and the lockfile is npm's.
+- **Not done.**
+  - **The decision on entry 29 for package bumps** (HANDOFF §10 item 18). Until it is made, M4's replay would measure run-all for nearly every dependency bump.
+  - **Not yet seen in CI.** No run-all plan is expected: the engine id did not change.
