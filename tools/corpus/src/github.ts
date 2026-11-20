@@ -35,6 +35,12 @@ export interface ClientOptions {
 
 type Query = Record<string, string | number>;
 
+/** The redirect statuses fetch follows (Fetch standard, "redirect status"). */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** Redirects within the API an artifact download follows before the one to the archive. */
+const MAX_API_REDIRECTS = 3;
+
 interface RawResponse {
   readonly status: number;
   readonly headers: Headers;
@@ -95,12 +101,7 @@ export class GitHubClient {
 
   /** The artifact archive. The API answers with a redirect to blob storage, which must not see the token. */
   async getArtifactZip(repo: string, artifactId: number): Promise<Uint8Array> {
-    const url = this.url(`/repos/${repo}/actions/artifacts/${artifactId}/zip`);
-    const redirect = await this.api(url, 'manual');
-    const location = redirect.headers.get('location');
-    if (redirect.status !== 302 || location === null) {
-      throw new HttpError(redirect.status, url, 'expected a redirect to the archive');
-    }
+    const location = await this.archiveLocation(this.url(`/repos/${repo}/actions/artifacts/${artifactId}/zip`));
     for (let attempt = 0; ; attempt++) {
       const blob = await fetch(location).catch((error: unknown) => error);
       if (blob instanceof Response && blob.ok) {
@@ -110,6 +111,31 @@ export class GitHubClient {
         throw blob instanceof Response ? new HttpError(blob.status, 'artifact blob', await blob.text()) : blob;
       }
       await this.sleep(1000 * 2 ** attempt);
+    }
+  }
+
+  /**
+   * Where the archive is: the first redirect that leaves the API's origin. A redirect that stays on
+   * it, such as a moved repository's 301 to `/repositories/<id>/…`, is an API request like any other
+   * and is followed with the token, at most MAX_API_REDIRECTS times.
+   */
+  private async archiveLocation(start: string): Promise<string> {
+    const apiOrigin = new URL(this.baseUrl).origin;
+    let url = start;
+    for (let redirects = 0; ; redirects++) {
+      const response = await this.api(url, 'manual');
+      const location = response.headers.get('location');
+      if (!REDIRECT_STATUSES.has(response.status) || location === null) {
+        throw new HttpError(response.status, url, 'expected a redirect to the archive');
+      }
+      const target = new URL(location, url);
+      if (target.origin !== apiOrigin) {
+        return target.toString();
+      }
+      if (redirects === MAX_API_REDIRECTS) {
+        throw new HttpError(response.status, url, `more than ${MAX_API_REDIRECTS} redirects within the API`);
+      }
+      url = target.toString();
     }
   }
 

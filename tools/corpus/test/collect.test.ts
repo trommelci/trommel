@@ -24,11 +24,13 @@ const RESULT_CAP = 2;
 
 describe('collectDay', () => {
   let gh: FakeGitHub;
+  let blob: FakeGitHub;
   let out: string;
   let runs: FakeRun[];
 
   beforeEach(async () => {
     gh = await startFakeGitHub();
+    blob = await startFakeGitHub();
     out = mkdtempSync(join(tmpdir(), 'trommel-corpus-'));
     runs = [
       { id: 101, run_attempt: 1, status: 'completed', created_at: '2026-11-10T01:00:00Z', check_suite_id: 1001 },
@@ -65,12 +67,14 @@ describe('collectDay', () => {
     gh.route('/repos/o/r/actions/runs/102/artifacts', () => ({
       body: { total_count: 1, artifacts: [{ id: 503, name: 'test-results', size_in_bytes: 4, expired: true }] },
     }));
-    gh.route('/repos/o/r/actions/artifacts/501/zip', () => ({ status: 302, headers: { location: `${gh.baseUrl}/blob/501` } }));
-    gh.route('/blob/501', () => ({ body: new Uint8Array([80, 75, 5, 6]) }));
+    // The archive is on another host than the API, as on GitHub.
+    gh.route('/repos/o/r/actions/artifacts/501/zip', () => ({ status: 302, headers: { location: `${blob.baseUrl}/blob/501` } }));
+    blob.route('/blob/501', () => ({ body: new Uint8Array([80, 75, 5, 6]) }));
   });
 
   afterEach(async () => {
     await gh.close();
+    await blob.close();
     rmSync(out, { recursive: true, force: true });
   });
 
