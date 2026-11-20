@@ -128,7 +128,12 @@ The list lives in [`tools/corpus/repos.json`](../tools/corpus/repos.json). For e
 
 **The backlog is cleared (to the 2026-11-19 manifest).** Every daily run from 2026-11-15 to 2026-11-19 succeeded.
 - The backlog was clear by the tenth run, on 2026-11-19, eight days after the first: faster than the 2–3 weeks estimated from the first run. Its manifest has nothing pending, and the run was not stopped early.
-- 24 of the 25 repositories have every day of the 87-day window. lexical has 86: its backfill item for 2026-11-15 ended in an error, "GET https://api.github.com/repos/facebook/lexical/actions/artifacts/14178703494/zip returned 301: expected a redirect to the archive", and every other lexical day is complete. The next run retries it, as the fourth run did for an es-toolkit error in the third. Whether the 301 recurs is not known yet.
+- 24 of the 25 repositories have every day of the 87-day window. lexical has 86: its backfill item for 2026-11-15 ended in an error, "GET https://api.github.com/repos/facebook/lexical/actions/artifacts/14178703494/zip returned 301: expected a redirect to the archive", and every other lexical day is complete. The eighth and ninth runs had ended it the same way (below).
+
+**lexical's artifact 301 (to the 2026-11-19 manifest; DECISIONS.md 39).** The eighth, ninth and tenth runs each ended that item with the same 301, so retrying does not help.
+- facebook/lexical moved to meta/lexical. The API answers the old path with a 301 to another API address, and the collector took only a 302, to blob storage, as an artifact's redirect. It now follows a redirect within the API with its token, and takes the first one that leaves the API as the archive.
+- The repository list keeps `facebook/lexical`: the API redirects every request, and the corpus paths stay `facebook__lexical`.
+- The artifact expires on 2026-11-22. If the fix runs before then, the day completes with its archive; if not, the archive is skipped as expired and the day completes without it. No lexical day had mirrored an archive before.
 
 **Where the data lives.** It goes in a separate public repository, [trommelci/trommel-corpus](https://github.com/trommelci/trommel-corpus), created on 2026-11-11. Its template is in [`tools/corpus/corpus-repo/`](../tools/corpus/corpus-repo/README.md).
 - Daily manifests and the collector state are committed to git.

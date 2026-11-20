@@ -1,7 +1,7 @@
 # Hand-off: Trommel milestone M1, after roadmap day 10
 
 - **Written:** 2026-11-11 (UTC), at `main` = `00fea91` plus this document.
-- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for SMAP v0 (DECISIONS 33 and 34): item 4 is done, and the map on disk is a SMAP file. Updated on 2026-11-16 for pnpm and yarn lockfiles (DECISIONS 36 and 37): they are parsed, and the engine is `trommel-static-4`. Updated on 2026-11-19 for `trommel explain` (DECISIONS 38), and for the corpus collector, whose backlog is cleared (§5.3).
+- **Updated:** 2026-11-14, after the foundation review and seven ADR corrections. Read §1.1 before anything else: it says where the documents now run ahead of the code. Items 1 to 3 of its worklist are done: the selector backstops (DECISIONS 29), the environment out of the map (DECISIONS 28) and resolution hubs (DECISIONS 32). Updated again on 2026-11-14 for the rename to Trommel (DECISIONS 30), and once more when the roadmap dropped its dates and commit counts (DECISIONS 31): a milestone is done when its exit criteria are met. Updated on 2026-11-15 for SMAP v0 (DECISIONS 33 and 34): item 4 is done, and the map on disk is a SMAP file. Updated on 2026-11-16 for pnpm and yarn lockfiles (DECISIONS 36 and 37): they are parsed, and the engine is `trommel-static-4`. Updated on 2026-11-19 for `trommel explain` (DECISIONS 38), and for the corpus collector, whose backlog is cleared (§5.3). Updated on 2026-11-20 for the collector's artifact downloads, which now follow a moved repository's redirect (DECISIONS 39, §5.3).
 - **For:** whoever continues the implementation, person or agent.
 - **Reading order:** this file, then [DECISIONS.md](DECISIONS.md), then the docs it points to.
 
@@ -82,7 +82,7 @@
 
 **First four things to do:**
 1. Read §1.1. Seven ADRs changed on 2026-11-13, and the code is catching up: items 1 to 4 of its worklist are done. M2 is item 5, and the rest of M1 is in §8.
-2. Check that the daily collector runs still succeed (§5.3). The backlog is clear as of 2026-11-19, so a manifest's `pending` should stay empty, and lexical's one day in error, 2026-11-15, should be collected again.
+2. Check that the daily collector runs still succeed (§5.3). The backlog is clear as of 2026-11-19, so a manifest's `pending` should stay empty, and lexical's one day in error, 2026-11-15, should be collected by the first run after DECISIONS 39.
 3. Start the rest of M1 (§8), in the order §1.1 gives. Every PR now shows Trommel's shadow summary: read it, and record any would-skip that should have run. `trommel explain <test> --to <file>` shows whether the map links the two.
 4. Take the open decisions to Ojas (§10).
 
@@ -179,7 +179,7 @@ npm run typecheck
 npm run check:deps
 ```
 
-Expect `1001 passed` from `npm test` (after DECISIONS 38; elsewhere than Windows, 1000 and 1 skipped), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
+Expect `1009 passed` from `npm test` (after DECISIONS 39; elsewhere than Windows, 1008 and 1 skipped), and no output from lint or typecheck. To reproduce the recorded benchmarks (§9), run `node bench/ls-tree.ts`, `node bench/lex.ts`, `node bench/graph.ts` and `node bench/static-graph.ts`.
 
 To try the CLI on this repository:
 
@@ -218,7 +218,7 @@ node packages/cli/src/main.ts explain packages/cli/test/report.test.ts --to pack
 | `packages/core/src/select/explain.ts` | One test's decision in the static plan, for `trommel explain` (DECISIONS 38). The verdict, a forced test's reason and the plan's path come from the `Selection` alone. A forward tree from the test adds every seed it reaches with a shortest path (the plan's own for the seed the plan names), how many nodes it depends on, and the answer for one `--to` node | `explainTest` | `test/select/explain.test.ts` (12, with a 500-run property against `selectStatic`); the random repositories it shares with `plan.test.ts` are in `test/select/repos.ts` |
 | `packages/cli/src/` | `trommel graph`, `diff`, `plan`, `explain`: `args.ts` (parseArgs, kickoff gap 1), `config.ts` (§5.1 validation, test discovery), `report.ts` (plan JSON, matrix, summary), `explain.ts` (paths from the current directory, the `--to` node, the text of an explanation), `cli.ts` (`headAt` and `planAt` load the head and the map for both `plan` and `explain`), `main.ts`. `bin: trommel` | `node packages/cli/src/main.ts --help` | `test/{args,config,report,explain,cli}.test.ts` (`cli.test.ts` is end to end) |
 | `packages/vitest`, `packages/jest` | Placeholders for M2 | — | — |
-| `tools/corpus/` | The corpus collector (§5). `repos.json` lists the repositories; `corpus-repo/` is the template for the data repo | `node tools/corpus/src/main.ts …` | `tools/corpus/test/*` (50) |
+| `tools/corpus/` | The corpus collector (§5). `repos.json` lists the repositories; `corpus-repo/` is the template for the data repo | `node tools/corpus/src/main.ts …` | `tools/corpus/test/*` (58) |
 | `tools/replay`, `tools/toyrepo` | Placeholders for M4 and M3 | — | — |
 | `scripts/` | CI guards: `check-zero-deps.ts`, `check-dco.ts` (logic in `scripts/lib/`). `lib/test-files.ts` turns a shard's `TROMMEL_TEST_FILES` list into Vitest's `include` (DECISIONS 25) | `npm run check:deps`, `npm run check:dco` | `scripts/test/*` (37) |
 | `trommel.config.json` | Trommel's config for this repository: 3 shards, one declared input for the CLI end-to-end test, and `inputs.ignore` for benchmarks, CI guard entry points and the lint config (DECISIONS 29) | — | — |
@@ -320,16 +320,22 @@ gh api repos/trommelci/trommel-corpus/contents/manifests/2026 --jq '.[].name'
 
 **The backlog is cleared (2026-11-19).** Checked with `gh` on 2026-11-19:
 - Run 10, [44517265831](https://github.com/trommelci/trommel-corpus/actions/runs/44517265831), published manifest `manifests/2026/2026-11-19-10.json`. It ended with nothing pending and was not stopped early (`stoppedEarly: null`).
-- 24 of the 25 repositories have all 87 days. facebook/lexical has 86: its `backfill` item for 2026-11-15 has status `error`, with the text "GET https://api.github.com/repos/facebook/lexical/actions/artifacts/14178703494/zip returned 301: expected a redirect to the archive". Every other lexical day is complete. The next run retries it, as run 4 did for es-toolkit's error. Whether the 301 recurs is not known yet.
+- 24 of the 25 repositories have all 87 days. facebook/lexical has 86: its `backfill` item for 2026-11-15 has status `error`, with the text "GET https://api.github.com/repos/facebook/lexical/actions/artifacts/14178703494/zip returned 301: expected a redirect to the archive". Every other lexical day is complete. Runs 8 and 9 had ended it the same way, so retrying does not help (below).
 - Every daily run from 2026-11-15 succeeded: [43706429525](https://github.com/trommelci/trommel-corpus/actions/runs/43706429525) (2026-11-15), [43857086425](https://github.com/trommelci/trommel-corpus/actions/runs/43857086425) (2026-11-16), [44078135584](https://github.com/trommelci/trommel-corpus/actions/runs/44078135584) (2026-11-17), [44297378822](https://github.com/trommelci/trommel-corpus/actions/runs/44297378822) (2026-11-18) and run 10.
 - The backlog was clear by run 10, eight days after the first run, faster than the 2–3 weeks estimated above. The table stops at run 5: runs 6 to 9 were not tabulated.
+
+**lexical's artifact 301 (checked 2026-11-20, DECISIONS 39).** Runs 8, 9 and 10 (2026-11-17 to 2026-11-19) each ended that item with the same 301, so retrying does not help.
+- The cause: the repository moved to `meta/lexical`. The API answers the old path with a 301 to `/repositories/318341089/…`, still the API. The collector took only a 302, to blob storage, as an artifact's redirect.
+- The fix: an artifact download now follows a redirect within the API with the token, at most three, and takes the first one off the API as the archive. Any of 301, 302, 303, 307 and 308 counts. `repos.json` keeps `facebook/lexical`, because the API redirects every request.
+- The artifact expires at 2026-11-22T20:23Z. If the fix is on `main` before that day's run, the day completes with its archive. After that the collector skips the archive as expired, and the day completes without it.
+- No lexical day had mirrored an archive before, so without the fix every lexical test report would end its day in `error` until it expired.
 
 **If the run failed or published nothing:**
 1. Read the log: `gh run view 43026895799 --repo trommelci/trommel-corpus --log-failed`.
 2. Fix the collector on a branch in this repository and merge it (with approval).
 3. Re-run with `gh workflow run collect.yml --repo trommelci/trommel-corpus`. It picks up `main` as it now stands; nothing needs pushing to trommel-corpus.
 
-Watch for two risks. If publishing runs past the 350-minute job timeout, the whole run's output is lost; if that happens, lower `max_minutes`. If lexical's 301 recurs, the collector needs to follow a 301 on artifact downloads.
+Watch for one risk: if publishing runs past the 350-minute job timeout, the whole run's output is lost. If that happens, lower `max_minutes`. The other risk noted on 2026-11-19, lexical's 301 recurring, came true and is fixed (DECISIONS 39).
 
 ### 5.4 Operating it locally
 
@@ -563,7 +569,7 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
   - ADR-0021 now states the cache trust model: a fork or an untrusted author cannot replace the map. Its key layout, `cache-mode` and origin check are M3 work; `trommel.yml` still saves `trommel-map-<sha>` and restores by prefix.
   - The shards run exactly the plan's list, which comes from Trommel's own discovery. A test that Vitest would run and Trommel does not find runs only in `ci.yml`. Keep `ci.yml` required until `trommel run` reconciles with the runner (ADR-0004).
   - A directory named by `new URL(…, import.meta.url)` depends on every file below it (DECISIONS 26). In a global input, a URL that names the repository root would select every test on any change, so this repository uses `import.meta.dirname`.
-- **Collector.** See §5.4. The backlog is clear as of run 10 on 2026-11-19 (§5.3): 24 of the 25 repositories have all 87 days, and facebook/lexical has 86, its 2026-11-15 item in error after an artifact download returned 301.
+- **Collector.** See §5.4. The backlog is clear as of run 10 on 2026-11-19 (§5.3): 24 of the 25 repositories have all 87 days, and facebook/lexical has 86, its 2026-11-15 item in error after an artifact download returned 301. The repository had moved, and artifact downloads now follow such redirects (DECISIONS 39).
 - **Found by the foundation review and not fixed** (its M6 and L2; DECISIONS 27; L1 is fixed by DECISIONS 29 and L3 by DECISIONS 32):
   - An import of a `.vue` or `.svelte` file is a plain target: that file's own imports are not followed, and nothing is flagged.
   - A `file:` link dependency outside the workspace list gets a `p:` node with a constant hash and no edge to its sources.
@@ -637,6 +643,7 @@ These are honest limits, not bugs. Most err towards running more tests; the lock
 | 36 | The pnpm and yarn lockfile readers: a strict YAML subset, the resolved model, three readers with no caller yet, 78 hand mutants |
 | 37 | The lockfile cut-over: one `Lockfile` interface, SMAP kinds 3 to 5, engine `trommel-static-4`, the planner on every format, the soundness property and its residuals (rulings R9 to R11), the 70-commit replay, the corpus check still to run |
 | 38 | `trommel explain`: the static plan's decision for one test, never recomputed; `forwardTree` paths with the plan's own for the seed it names; `--to`, with key-shaped values read as keys; the default map at the repository root; paths through short names and links; text by default, `--json` canonical; exit codes |
+| 39 | Artifact downloads follow a moved repository's redirect: any redirect status, the token kept within the API's origin and never sent off it, at most three redirects within the API |
 
 **Status of the kickoff doc gaps** (DECISIONS 1):
 
