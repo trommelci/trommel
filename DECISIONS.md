@@ -1056,3 +1056,24 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     - Each run exits 0 with nothing on stderr. `trommel explain packages/cli/src/explain.ts` exits 1: "packages/cli/src/explain.ts is not a test file Trommel plans at HEAD; it plans 46 test files".
     - After the fix wave, `trommel explain test/report.test.ts --head 19f3ba5` run from `packages/cli` prints the same two lines for `report.test.ts` as above, and so does the test's absolute path through the short (8.3) names of the directories above the repository. With the code at `1ac3554`, before the wave, the first said "L3: no map at .trommel/map/map.smap" and the second exited 1 as outside the repository.
 - **Not yet seen in CI.** The Windows job runs the end-to-end tests in a temporary directory under `RUNNER~1`, which the ancestor walk of `repoPath` is for: there the absolute-path test names the repository through the short name. No CI job runs on macOS, where `/var` is a link to `/private/var`.
+
+## 39. Artifact downloads follow a moved repository's redirect (2026-11-20)
+
+- **Context.** Entry 9's probe saw an artifact download answer 302 to blob storage, and `getArtifactZip` took that status and no other. Runs 8, 9 and 10 (2026-11-17 to 2026-11-19) each ended facebook/lexical's 2026-11-15 item in `error`, with "GET https://api.github.com/repos/facebook/lexical/actions/artifacts/14178703494/zip returned 301: expected a redirect to the archive". So retrying did not help, and lexical stayed at 86 of 87 days.
+  - **The repository moved.** On 2026-11-20, `gh api repos/facebook/lexical` answered with `meta/lexical`, id 318341089, and the artifact's own `archive_download_url` names `repos/meta/lexical/…`.
+  - **The 301 points at the API, not at blob storage.** Asked without following, the old path answers `301 Moved Permanently` with `Location: https://api.github.com/repositories/318341089/actions/artifacts/14178703494/zip`. That address answers 401 without the token.
+  - **Only the download saw it.** Listings use `redirect: 'follow'`, and fetch keeps the authorization header on a redirect within one origin. The download handles its redirect by hand, so that blob storage never sees the token.
+  - No lexical day in the ten manifests mirrored an archive. 2026-11-15 is the first whose test report reached a download.
+- **Decision.**
+  - **Where a redirect points decides how it is followed, not its status.** Each of the Fetch standard's five redirect statuses, 301, 302, 303, 307 and 308, is accepted. A `Location` on the API's origin is an API request like any other: it is sent with the token and counts against the request budget. The first `Location` off that origin is the archive, fetched without the token as before.
+    - **Rejected: taking a 301 like the 302.** Its `Location` is the API, so the archive request would reach it without the token and get 401.
+    - **Rejected: `redirect: 'follow'` for the download.** Node's fetch drops the authorization header on a redirect to another origin, but whether blob storage sees the token would then rest on the runtime, not on code this repository tests.
+  - **At most three redirects within the API,** then an error. A moved repository takes one.
+  - **`repos.json` keeps `facebook/lexical`.** The API redirects every request, and a new name would change the `facebook__lexical` paths in the corpus.
+- **Evidence.**
+  - **Tests.** 8 new in `github.test.ts`, so 58 in `tools/corpus/test` and 1,009 in all on Windows 11, where entry 38 had 1,001 (elsewhere 1,008 pass and 1 is skipped). They cover each of the five statuses to another host, a moved repository's 301 followed with the token to a 302, a loop that stops after four requests, and a 200 that is not taken for an archive. Six failed before the fix: 301, 303, 307 and 308 to another host and the moved repository with the production message, and the loop because it stopped after one request.
+  - **The fake API had served the archive from its own origin.** `github.test.ts` and `collect.test.ts` now serve it from a second fake server, as GitHub does, which passed before the fix as well.
+  - **A hand mutant** that took every redirect for the archive fails the moved-repository and loop tests.
+  - Lint, typecheck and the zero-dependency check are clean. The collector's output formats did not change; a download through a moved repository costs one more request.
+- **Not done.**
+  - **Not yet seen in a run.** The collector runs at `main`, so the fix applies from the first daily run after it merges. The artifact expires at 2026-11-22T20:23Z, so the run on 2026-11-22, which starts around 11:00 UTC, is the last that can mirror it. After that the listing marks it expired, the collector skips it, and the day completes without the archive.

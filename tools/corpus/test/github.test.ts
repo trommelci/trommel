@@ -113,11 +113,58 @@ describe('GitHubClient', () => {
     expect(gh.requests).toHaveLength(1);
   });
 
-  it('downloads an artifact through the redirect without sending the token to the blob host', async () => {
-    gh.route('/repos/o/r/actions/artifacts/9/zip', () => ({ status: 302, headers: { location: `${gh.baseUrl}/blob/9?sig=abc` } }));
-    gh.route('/blob/9', (_url, headers) =>
-      headers.authorization === undefined ? { body: new Uint8Array([80, 75, 3, 4]) } : { status: 400, body: { message: 'auth forwarded' } },
-    );
-    expect(await client().getArtifactZip('o/r', 9)).toEqual(new Uint8Array([80, 75, 3, 4]));
+  describe('getArtifactZip', () => {
+    // Blob storage is another host than the API, as on GitHub, and must never see the token.
+    let blob: FakeGitHub;
+    beforeEach(async () => {
+      blob = await startFakeGitHub();
+      blob.route('/blob/9', (_url, headers) =>
+        headers.authorization === undefined ? { body: new Uint8Array([80, 75, 3, 4]) } : { status: 400, body: { message: 'auth forwarded' } },
+      );
+    });
+    afterEach(async () => {
+      await blob.close();
+    });
+
+    it('downloads an artifact through the redirect without sending the token to the blob host', async () => {
+      gh.route('/repos/o/r/actions/artifacts/9/zip', () => ({ status: 302, headers: { location: `${blob.baseUrl}/blob/9?sig=abc` } }));
+      expect(await client().getArtifactZip('o/r', 9)).toEqual(new Uint8Array([80, 75, 3, 4]));
+    });
+
+    it.each([301, 302, 303, 307, 308])('takes a %d to another host as the redirect to the archive', async (status) => {
+      gh.route('/repos/o/r/actions/artifacts/9/zip', () => ({ status, headers: { location: `${blob.baseUrl}/blob/9?sig=abc` } }));
+      expect(await client().getArtifactZip('o/r', 9)).toEqual(new Uint8Array([80, 75, 3, 4]));
+    });
+
+    it("follows a moved repository's redirect within the API with the token, then the redirect to the archive", async () => {
+      // A renamed repository answers its old path with a 301 to /repositories/<id>/…: facebook/lexical,
+      // now meta/lexical, did so in corpus runs 8 to 10.
+      gh.route('/repos/o/r/actions/artifacts/9/zip', () => ({
+        status: 301,
+        headers: { location: `${gh.baseUrl}/repositories/42/actions/artifacts/9/zip` },
+      }));
+      gh.route('/repositories/42/actions/artifacts/9/zip', (_url, headers) =>
+        headers.authorization === 'Bearer test-token'
+          ? { status: 302, headers: { location: `${blob.baseUrl}/blob/9?sig=abc` } }
+          : { status: 401, body: { message: 'Requires authentication' } },
+      );
+      const c = client();
+      expect(await c.getArtifactZip('o/r', 9)).toEqual(new Uint8Array([80, 75, 3, 4]));
+      expect(gh.requests.map((request) => request.path)).toEqual(['/repos/o/r/actions/artifacts/9/zip', '/repositories/42/actions/artifacts/9/zip']);
+      expect(c.requests).toBe(2);
+    });
+
+    it('gives up after three redirects that stay within the API', async () => {
+      gh.route('/repos/o/r/actions/artifacts/9/zip', () => ({ status: 301, headers: { location: `${gh.baseUrl}/repos/o/r/actions/artifacts/9/zip` } }));
+      await expect(client().getArtifactZip('o/r', 9)).rejects.toMatchObject({ status: 301 });
+      expect(gh.requests).toHaveLength(4);
+      expect(blob.requests).toHaveLength(0);
+    });
+
+    it('refuses an answer that is not a redirect', async () => {
+      gh.route('/repos/o/r/actions/artifacts/9/zip', () => ({ body: { message: 'not an archive' } }));
+      await expect(client().getArtifactZip('o/r', 9)).rejects.toMatchObject({ status: 200 });
+      expect(blob.requests).toHaveLength(0);
+    });
   });
 });
