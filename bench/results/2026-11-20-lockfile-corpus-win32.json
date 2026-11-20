@@ -1,0 +1,1033 @@
+{
+  "machine": {
+    "cpu": "AMD Ryzen AI 7 350 w/ Radeon 860M",
+    "node": "v26.4.0",
+    "platform": "win32",
+    "release": "10.0.26200"
+  },
+  "repositories": {
+    "excalidraw/excalidraw": {
+      "after": {
+        "commitsByKind": {
+          "other": 18
+        },
+        "commitsTouchingTheLockfile": 18,
+        "dependencyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 0,
+          "outcomes": {},
+          "plans": 0,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "2c3dcc06ec807e81ab9437eceb1a8f7a3c590743",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 0,
+          "outcomes": {},
+          "plans": 0,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "yarn-classic yarn.lock": 18
+        },
+        "refusalReasons": [],
+        "seconds": 5.4,
+        "since": "2025-11-19"
+      },
+      "before": {
+        "commitsByKind": {
+          "other": 18
+        },
+        "commitsTouchingTheLockfile": 18,
+        "dependencyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 0,
+          "outcomes": {},
+          "plans": 0,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "2c3dcc06ec807e81ab9437eceb1a8f7a3c590743",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 0,
+          "outcomes": {},
+          "plans": 0,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "yarn-classic yarn.lock": 18
+        },
+        "refusalReasons": [],
+        "seconds": 5.2,
+        "since": "2025-11-19"
+      }
+    },
+    "honojs/hono": {
+      "after": {
+        "commitsByKind": {
+          "dependency": 8,
+          "lockfile-only": 2,
+          "other": 22
+        },
+        "commitsTouchingTheLockfile": 32,
+        "dependencyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 8,
+          "outcomes": {
+            "L3": 6,
+            "selected through other changes": 2
+          },
+          "plans": 8,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "75ff8e3ea18485589816881c6278bc9783e56602",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 2,
+          "outcomes": {
+            "L3": 2
+          },
+          "plans": 2,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "pnpm pnpm-lock.yaml": 12,
+          "unparseable bun.lock": 20
+        },
+        "refusalReasons": [
+          "bun lockfiles are not parsed"
+        ],
+        "seconds": 14.7,
+        "since": "2025-11-19"
+      },
+      "before": {
+        "commitsByKind": {
+          "dependency": 8,
+          "lockfile-only": 2,
+          "other": 22
+        },
+        "commitsTouchingTheLockfile": 32,
+        "dependencyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 8,
+          "outcomes": {
+            "L3": 6,
+            "selected through other changes": 2
+          },
+          "plans": 8,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "75ff8e3ea18485589816881c6278bc9783e56602",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 2,
+          "outcomes": {
+            "L3": 2
+          },
+          "plans": 2,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "pnpm pnpm-lock.yaml": 12,
+          "unparseable bun.lock": 20
+        },
+        "refusalReasons": [
+          "bun lockfiles are not parsed"
+        ],
+        "seconds": 14.9,
+        "since": "2025-11-19"
+      }
+    },
+    "prettier/prettier": {
+      "after": {
+        "commitsByKind": {
+          "dependency": 289,
+          "lockfile-only": 3,
+          "other": 260
+        },
+        "commitsTouchingTheLockfile": 552,
+        "dependencyCommits": {
+          "distinctRootCauses": 1937,
+          "everyTest": 289,
+          "outcomes": {
+            "L1 at the root": 289
+          },
+          "plans": 289,
+          "topRootCauses": [
+            {
+              "cause": "p:yarn:@eslint-community/eslint-utils@* changed and no test reaches it",
+              "plans": 49
+            },
+            {
+              "cause": "p:yarn:tslib@* changed and no test reaches it",
+              "plans": 45
+            },
+            {
+              "cause": "p:npm:node_modules/@angular/compiler changed and no test reaches it",
+              "plans": 39
+            },
+            {
+              "cause": "p:yarn:@angular/compiler@* changed and no test reaches it",
+              "plans": 39
+            },
+            {
+              "cause": "p:npm:node_modules/oxc-parser changed and no test reaches it",
+              "plans": 28
+            },
+            {
+              "cause": "p:yarn:ts-api-utils@* changed and no test reaches it",
+              "plans": 25
+            },
+            {
+              "cause": "p:npm:node_modules/@typescript-eslint/eslint-plugin changed and no test reaches it",
+              "plans": 24
+            },
+            {
+              "cause": "p:npm:node_modules/@typescript-eslint/parser changed and no test reaches it",
+              "plans": 24
+            },
+            {
+              "cause": "p:npm:node_modules/@typescript-eslint/typescript-estree changed and no test reaches it",
+              "plans": 24
+            },
+            {
+              "cause": "p:npm:node_modules/@typescript-eslint/visitor-keys changed and no test reaches it",
+              "plans": 24
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "ed0887e1b7dc9be28195e792c51a4be3f8bc9cd9",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 214,
+          "everyTest": 3,
+          "outcomes": {
+            "L1 at the root": 3
+          },
+          "plans": 3,
+          "topRootCauses": [
+            {
+              "cause": "p:yarn:@glimmer/syntax@npm:0.95.0 changed and no test reaches it",
+              "plans": 2
+            },
+            {
+              "cause": "p:npm:node_modules/prettier changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/compat-data@npm:7.28.5 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/core@* changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/core@npm:7.28.5 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/generator@npm:7.28.5 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/helper-compilation-targets@npm:7.27.2 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/helper-module-imports@npm:7.27.1 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/helper-module-transforms@npm:7.28.3 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@babel/helper-plugin-utils@npm:7.27.1 changed and no test reaches it",
+              "plans": 1
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "yarn-berry yarn.lock": 552
+        },
+        "refusalReasons": [],
+        "seconds": 1097.2,
+        "since": "2025-11-20"
+      },
+      "before": {
+        "commitsByKind": {
+          "dependency": 289,
+          "lockfile-only": 3,
+          "other": 260
+        },
+        "commitsTouchingTheLockfile": 552,
+        "dependencyCommits": {
+          "distinctRootCauses": 1863,
+          "everyTest": 289,
+          "outcomes": {
+            "L1 at the root": 275,
+            "L3": 14
+          },
+          "plans": 289,
+          "topRootCauses": [
+            {
+              "cause": "yarn.lock changed and no test reaches it",
+              "plans": 275
+            },
+            {
+              "cause": "p:yarn:@eslint-community/eslint-utils@* changed and no test reaches it",
+              "plans": 47
+            },
+            {
+              "cause": "p:yarn:tslib@* changed and no test reaches it",
+              "plans": 42
+            },
+            {
+              "cause": "p:npm:node_modules/@angular/compiler changed and no test reaches it",
+              "plans": 37
+            },
+            {
+              "cause": "p:yarn:@angular/compiler@* changed and no test reaches it",
+              "plans": 37
+            },
+            {
+              "cause": "p:npm:node_modules/oxc-parser changed and no test reaches it",
+              "plans": 27
+            },
+            {
+              "cause": "p:yarn:ts-api-utils@* changed and no test reaches it",
+              "plans": 24
+            },
+            {
+              "cause": "p:npm:node_modules/@typescript-eslint/eslint-plugin changed and no test reaches it",
+              "plans": 23
+            },
+            {
+              "cause": "p:npm:node_modules/@typescript-eslint/parser changed and no test reaches it",
+              "plans": 23
+            },
+            {
+              "cause": "p:npm:node_modules/@typescript-eslint/typescript-estree changed and no test reaches it",
+              "plans": 23
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "ed0887e1b7dc9be28195e792c51a4be3f8bc9cd9",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 6,
+          "everyTest": 3,
+          "outcomes": {
+            "L1 at the root": 2,
+            "L3": 1
+          },
+          "plans": 3,
+          "topRootCauses": [
+            {
+              "cause": "yarn.lock changed and no test reaches it",
+              "plans": 2
+            },
+            {
+              "cause": "p:npm:node_modules/prettier changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@glimmer/syntax@npm:0.95.0 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@handlebars/parser@npm:2.2.2 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:prettier@* changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:prettier@npm:3.9.5 changed and no test reaches it",
+              "plans": 1
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "unparseable yarn.lock": 22,
+          "yarn-berry yarn.lock": 530
+        },
+        "refusalReasons": [
+          "__metadata version \"9\", and only '8' and '10' are read"
+        ],
+        "seconds": 907.9,
+        "since": "2025-11-20"
+      }
+    },
+    "toss/es-toolkit": {
+      "after": {
+        "commitsByKind": {
+          "dependency": 3,
+          "other": 22
+        },
+        "commitsTouchingTheLockfile": 25,
+        "dependencyCommits": {
+          "distinctRootCauses": 80,
+          "everyTest": 3,
+          "outcomes": {
+            "L1 at the root": 3
+          },
+          "plans": 3,
+          "topRootCauses": [
+            {
+              "cause": "p:yarn:acorn@* changed and no test reaches it",
+              "plans": 2
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint/js changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/@types/eslint changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/eslint changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/vercel changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@cspotcode/source-map-support@npm:0.8.1 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/config-array@npm:0.19.2 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/config-helpers@npm:0.1.0 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/core@npm:0.12.0 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/eslintrc@npm:3.3.0 changed and no test reaches it",
+              "plans": 1
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "24e7a7b8cb8035fae1ea2e7b507aab96698a38b9",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 0,
+          "outcomes": {},
+          "plans": 0,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "yarn-berry yarn.lock": 25
+        },
+        "refusalReasons": [],
+        "seconds": 12.2,
+        "since": "2025-11-14"
+      },
+      "before": {
+        "commitsByKind": {
+          "dependency": 3,
+          "other": 22
+        },
+        "commitsTouchingTheLockfile": 25,
+        "dependencyCommits": {
+          "distinctRootCauses": 80,
+          "everyTest": 3,
+          "outcomes": {
+            "L1 at the root": 3
+          },
+          "plans": 3,
+          "topRootCauses": [
+            {
+              "cause": "p:yarn:acorn@* changed and no test reaches it",
+              "plans": 2
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint/js changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/@types/eslint changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/eslint changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/vercel changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@cspotcode/source-map-support@npm:0.8.1 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/config-array@npm:0.19.2 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/config-helpers@npm:0.1.0 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/core@npm:0.12.0 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:yarn:@eslint/eslintrc@npm:3.3.0 changed and no test reaches it",
+              "plans": 1
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "24e7a7b8cb8035fae1ea2e7b507aab96698a38b9",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 0,
+          "everyTest": 0,
+          "outcomes": {},
+          "plans": 0,
+          "topRootCauses": [],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "lockfileVersions": {
+          "yarn-berry yarn.lock": 25
+        },
+        "refusalReasons": [],
+        "seconds": 12.3,
+        "since": "2025-11-14"
+      }
+    },
+    "typescript-eslint/typescript-eslint": {
+      "after": {
+        "commitsByKind": {
+          "dependency": 104,
+          "lockfile-only": 62,
+          "other": 61
+        },
+        "commitsTouchingTheLockfile": 227,
+        "dependencyCommits": {
+          "distinctRootCauses": 1097,
+          "everyTest": 103,
+          "outcomes": {
+            "L1 at the root": 98,
+            "L1 in a package": 2,
+            "selected through changed packages": 2,
+            "selected through other changes": 2
+          },
+          "plans": 104,
+          "topRootCauses": [
+            {
+              "cause": "p:npm:node_modules/knip changed and no test reaches it",
+              "plans": 33
+            },
+            {
+              "cause": "p:pnpm:#env changed and no test reaches it",
+              "plans": 17
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-perfectionist changed and no test reaches it",
+              "plans": 6
+            },
+            {
+              "cause": "p:npm:node_modules/markdownlint-cli changed and no test reaches it",
+              "plans": 5
+            },
+            {
+              "cause": "p:npm:node_modules/@nx/vitest changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/eslint-plugin changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:npm:node_modules/console-fail-test changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-eslint-plugin changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:pnpm:@es-joy/jsdoccomment@0.50.2 changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:pnpm:@napi-rs/wasm-runtime@0.2.4 changed and no test reaches it",
+              "plans": 4
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 3
+        },
+        "head": "c4bddb15e6c019470db5ac00eed6a0a5bcff7996",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 1398,
+          "everyTest": 61,
+          "outcomes": {
+            "L1 at the root": 61,
+            "selected through other changes": 1
+          },
+          "plans": 62,
+          "topRootCauses": [
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-perfectionist changed and no test reaches it",
+              "plans": 16
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/eslint-plugin changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:pnpm:@vitest/eslint-plugin@* changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint-community/eslint-plugin-eslint-comments changed and no test reaches it",
+              "plans": 13
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-eslint-plugin changed and no test reaches it",
+              "plans": 13
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-n changed and no test reaches it",
+              "plans": 11
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint/compat changed and no test reaches it",
+              "plans": 10
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint/js changed and no test reaches it",
+              "plans": 10
+            },
+            {
+              "cause": "p:npm:node_modules/@nx/vitest changed and no test reaches it",
+              "plans": 10
+            },
+            {
+              "cause": "p:npm:node_modules/eslint changed and no test reaches it",
+              "plans": 10
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 42
+        },
+        "lockfileVersions": {
+          "pnpm pnpm-lock.yaml": 178,
+          "yarn-berry yarn.lock": 49
+        },
+        "refusalReasons": [],
+        "seconds": 384.8,
+        "since": "2025-11-19"
+      },
+      "before": {
+        "commitsByKind": {
+          "dependency": 104,
+          "lockfile-only": 62,
+          "other": 61
+        },
+        "commitsTouchingTheLockfile": 227,
+        "dependencyCommits": {
+          "distinctRootCauses": 1051,
+          "everyTest": 104,
+          "outcomes": {
+            "L1 at the root": 94,
+            "L3": 10
+          },
+          "plans": 104,
+          "topRootCauses": [
+            {
+              "cause": "pnpm-lock.yaml changed and no test reaches it",
+              "plans": 94
+            },
+            {
+              "cause": "p:npm:node_modules/knip changed and no test reaches it",
+              "plans": 29
+            },
+            {
+              "cause": "p:pnpm:#env changed and no test reaches it",
+              "plans": 17
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-perfectionist changed and no test reaches it",
+              "plans": 6
+            },
+            {
+              "cause": "p:npm:node_modules/@nx/vitest changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-eslint-plugin changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:pnpm:@es-joy/jsdoccomment@0.50.2 changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:pnpm:@napi-rs/wasm-runtime@0.2.4 changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:pnpm:react@* changed and no test reaches it",
+              "plans": 4
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint-community/eslint-plugin-eslint-comments changed and no test reaches it",
+              "plans": 3
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 3
+        },
+        "head": "c4bddb15e6c019470db5ac00eed6a0a5bcff7996",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 1189,
+          "everyTest": 62,
+          "outcomes": {
+            "L1 at the root": 47,
+            "L3": 15
+          },
+          "plans": 62,
+          "topRootCauses": [
+            {
+              "cause": "pnpm-lock.yaml changed and no test reaches it",
+              "plans": 47
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-perfectionist changed and no test reaches it",
+              "plans": 15
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/eslint-plugin changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:pnpm:@vitest/eslint-plugin@* changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint-community/eslint-plugin-eslint-comments changed and no test reaches it",
+              "plans": 12
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-eslint-plugin changed and no test reaches it",
+              "plans": 12
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-n changed and no test reaches it",
+              "plans": 11
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint/compat changed and no test reaches it",
+              "plans": 10
+            },
+            {
+              "cause": "p:npm:node_modules/@eslint/js changed and no test reaches it",
+              "plans": 10
+            },
+            {
+              "cause": "p:npm:node_modules/@nx/vitest changed and no test reaches it",
+              "plans": 10
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 33
+        },
+        "lockfileVersions": {
+          "pnpm pnpm-lock.yaml": 178,
+          "unparseable yarn.lock": 49
+        },
+        "refusalReasons": [
+          "__metadata version \"6\", and only '8' and '10' are read"
+        ],
+        "seconds": 421.8,
+        "since": "2025-11-19"
+      }
+    },
+    "vuejs/core": {
+      "after": {
+        "commitsByKind": {
+          "dependency": 69,
+          "lockfile-only": 8,
+          "other": 48
+        },
+        "commitsTouchingTheLockfile": 125,
+        "dependencyCommits": {
+          "distinctRootCauses": 618,
+          "everyTest": 69,
+          "outcomes": {
+            "L1 at the root": 61,
+            "selected through other changes": 8
+          },
+          "plans": 69,
+          "topRootCauses": [
+            {
+              "cause": "p:npm:node_modules/@vitest/eslint-plugin changed and no test reaches it",
+              "plans": 35
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/coverage-v8 changed and no test reaches it",
+              "plans": 20
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-import-x changed and no test reaches it",
+              "plans": 16
+            },
+            {
+              "cause": "p:npm:node_modules/typescript-eslint changed and no test reaches it",
+              "plans": 15
+            },
+            {
+              "cause": "p:npm:node_modules/eslint changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:npm:node_modules/puppeteer changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:npm:node_modules/vite changed and no test reaches it",
+              "plans": 11
+            },
+            {
+              "cause": "p:npm:node_modules/lint-staged changed and no test reaches it",
+              "plans": 9
+            },
+            {
+              "cause": "p:npm:node_modules/jsdom changed and no test reaches it",
+              "plans": 8
+            },
+            {
+              "cause": "p:npm:node_modules/@types/node changed and no test reaches it",
+              "plans": 7
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "7de9e41b61b2d890fd4be408068da75cbeb05709",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 13,
+          "everyTest": 8,
+          "outcomes": {
+            "L1 at the root": 5,
+            "selected through changed packages": 2,
+            "selected through other changes": 1
+          },
+          "plans": 8,
+          "topRootCauses": [
+            {
+              "cause": "p:npm:node_modules/vite changed and no test reaches it",
+              "plans": 2
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/coverage-v8 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/eslint-plugin changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/lodash changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:@typescript-eslint/typescript-estree@8.56.1(typescript@5.6.3) changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:@vitest/coverage-v8@3.2.4(vitest@3.2.4(@types/node@24.10.4)(jsdom@27.3.0(postcss@8.5.6))(sass@1.96.0)) changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:@vitest/eslint-plugin@1.5.2(eslint@9.39.2)(typescript@5.6.3)(vitest@3.2.4(@types/node@24.10.4)(jsdom@27.3.0(postcss@8.5.6))(sass@1.96.0)) changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:ajv@8.18.0 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:eslint-import-resolver-node@0.3.9 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:fast-uri@3.1.0 changed and no test reaches it",
+              "plans": 1
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 5
+        },
+        "lockfileVersions": {
+          "pnpm pnpm-lock.yaml": 125
+        },
+        "refusalReasons": [],
+        "seconds": 109.5,
+        "since": "2025-11-20"
+      },
+      "before": {
+        "commitsByKind": {
+          "dependency": 69,
+          "lockfile-only": 8,
+          "other": 48
+        },
+        "commitsTouchingTheLockfile": 125,
+        "dependencyCommits": {
+          "distinctRootCauses": 619,
+          "everyTest": 69,
+          "outcomes": {
+            "L1 at the root": 69
+          },
+          "plans": 69,
+          "topRootCauses": [
+            {
+              "cause": "pnpm-lock.yaml changed and no test reaches it",
+              "plans": 69
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/eslint-plugin changed and no test reaches it",
+              "plans": 35
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/coverage-v8 changed and no test reaches it",
+              "plans": 20
+            },
+            {
+              "cause": "p:npm:node_modules/eslint-plugin-import-x changed and no test reaches it",
+              "plans": 16
+            },
+            {
+              "cause": "p:npm:node_modules/typescript-eslint changed and no test reaches it",
+              "plans": 15
+            },
+            {
+              "cause": "p:npm:node_modules/eslint changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:npm:node_modules/puppeteer changed and no test reaches it",
+              "plans": 14
+            },
+            {
+              "cause": "p:npm:node_modules/vite changed and no test reaches it",
+              "plans": 11
+            },
+            {
+              "cause": "p:npm:node_modules/lint-staged changed and no test reaches it",
+              "plans": 9
+            },
+            {
+              "cause": "p:npm:node_modules/jsdom changed and no test reaches it",
+              "plans": 8
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 0
+        },
+        "head": "7de9e41b61b2d890fd4be408068da75cbeb05709",
+        "lockfileOnlyCommits": {
+          "distinctRootCauses": 14,
+          "everyTest": 8,
+          "outcomes": {
+            "L1 at the root": 8
+          },
+          "plans": 8,
+          "topRootCauses": [
+            {
+              "cause": "pnpm-lock.yaml changed and no test reaches it",
+              "plans": 8
+            },
+            {
+              "cause": "p:npm:node_modules/vite changed and no test reaches it",
+              "plans": 2
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/coverage-v8 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/@vitest/eslint-plugin changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:npm:node_modules/lodash changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:@typescript-eslint/typescript-estree@8.56.1(typescript@5.6.3) changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:@vitest/coverage-v8@3.2.4(vitest@3.2.4(@types/node@24.10.4)(jsdom@27.3.0(postcss@8.5.6))(sass@1.96.0)) changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:@vitest/eslint-plugin@1.5.2(eslint@9.39.2)(typescript@5.6.3)(vitest@3.2.4(@types/node@24.10.4)(jsdom@27.3.0(postcss@8.5.6))(sass@1.96.0)) changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:ajv@8.18.0 changed and no test reaches it",
+              "plans": 1
+            },
+            {
+              "cause": "p:pnpm:eslint-import-resolver-node@0.3.9 changed and no test reaches it",
+              "plans": 1
+            }
+          ],
+          "whyPathsEndingAtUnchangedPackages": 0,
+          "withTestsThroughChangedPackages": 5
+        },
+        "lockfileVersions": {
+          "pnpm pnpm-lock.yaml": 125
+        },
+        "refusalReasons": [],
+        "seconds": 107.3,
+        "since": "2025-11-20"
+      }
+    }
+  },
+  "script": "bench/lockfile-corpus.ts"
+}

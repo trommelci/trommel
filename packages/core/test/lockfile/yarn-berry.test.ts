@@ -82,6 +82,44 @@ describe('parseYarnBerryLockfile', () => {
     expect(entryOf(eight, 'trim@npm:1.0.1').content).toEqual({ resolution: 'trim@npm:1.0.1', checksum: '10c0/b9c0d2' });
   });
 
+  it('version 9 is read as version 10 is', () => {
+    const nine = V10.replace('__metadata:\n  version: 10\n', '__metadata:\n  version: 9\n');
+    expect(nine).not.toBe(V10);
+    expect(read(nine)).toEqual(read(V10));
+  });
+
+  describe('version 6 (yarn 3), which writes a range without its protocol', () => {
+    const SIX = [
+      '__metadata:\n  version: 6\n  cacheKey: 8\n',
+      '"a@npm:^1.0.0":\n  version: 1.0.0\n  resolution: "a@npm:1.0.0"\n  dependencies:\n    b: ^2.0.0\n    c: "npm:^3.0.0"\n    d: ^9.0.0\n    w: "workspace:^"\n  checksum: 6e98e4\n  languageName: node\n  linkType: hard\n',
+      '"b@npm:^2.0.0":\n  version: 2.0.0\n  resolution: "b@npm:2.0.0"\n',
+      '"c@npm:^3.0.0":\n  version: 3.0.0\n  resolution: "c@npm:3.0.0"\n',
+      '"root@workspace:.":\n  version: 0.0.0-use.local\n  resolution: "root@workspace:."\n  dependencies:\n    a: ^1.0.0\n    w: "workspace:^"\n  languageName: unknown\n  linkType: soft\n',
+      '"w@workspace:^, w@workspace:w":\n  version: 0.0.0-use.local\n  resolution: "w@workspace:w"\n  languageName: unknown\n  linkType: soft\n',
+    ].join('\n');
+
+    it("resolves a bare range through yarn's default protocol, npm:", () => {
+      const model = read(SIX);
+      expect(importerOf(model, '').get('a')).toEqual({ kind: 'entry', id: 'a@npm:1.0.0' });
+      const a = entryOf(model, 'a@npm:1.0.0');
+      expect(a.dependencies.get('b')).toEqual({ kind: 'entry', id: 'b@npm:2.0.0' });
+      expect(a.content).toEqual({ resolution: 'a@npm:1.0.0', checksum: '6e98e4' });
+      expect(modelProblem(model)).toBeNull();
+    });
+
+    it('keeps a range that names its protocol, and leaves a range no key holds unresolved', () => {
+      const a = entryOf(read(SIX), 'a@npm:1.0.0');
+      expect(a.dependencies.get('c')).toEqual({ kind: 'entry', id: 'c@npm:3.0.0' });
+      expect(a.dependencies.get('w')).toEqual({ kind: 'link', dir: 'w' });
+      expect(a.dependencies.get('d')).toEqual({ kind: 'unresolved' });
+    });
+
+    it('a later version gets no such fallback: its ranges name their protocol', () => {
+      const ten = SIX.replace('__metadata:\n  version: 6\n', '__metadata:\n  version: 10\n');
+      expect(entryOf(read(ten), 'a@npm:1.0.0').dependencies.get('b')).toEqual({ kind: 'unresolved' });
+    });
+  });
+
   it('a redirected reference is unresolved', () => {
     const model = read(V10);
     expect(entryOf(model, 'remark-parse@npm:8.0.3').dependencies.get('trim')).toEqual({ kind: 'unresolved' });
@@ -132,7 +170,8 @@ describe('parseYarnBerryLockfile', () => {
   });
 
   it.each([
-    ['version 6', '__metadata:\n  version: 6\n  cacheKey: 8\n', /version/],
+    ['version 4 (yarn 2)', '__metadata:\n  version: 4\n  cacheKey: 7\n', /version "4", and only '6', '8', '9' and '10' are read/],
+    ['version 7', '__metadata:\n  version: 7\n  cacheKey: 8\n', /version "7"/],
     ['no __metadata', '"a@npm:1.0.0":\n  resolution: "a@npm:1.0.0"\n', /__metadata/],
     ['an entry with no resolution', lock('"a@npm:1.0.0":\n  version: 1.0.0\n'), /resolution/],
     [
@@ -153,7 +192,7 @@ describe('parseYarnBerryLockfile', () => {
     expect(refusal.reason).toMatch(reason);
   });
 
-  it('refuses a version that is not a plain 8 or 10', () => {
+  it('refuses a version that is not one of those numbers, written plainly', () => {
     expect(refuse('__metadata:\n  version: "08"\n').reason).toMatch(/version/);
     expect(refuse('__metadata:\n  cacheKey: 10\n').reason).toMatch(/version/);
   });

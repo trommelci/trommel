@@ -76,19 +76,20 @@ These columns come from the GitHub API on 2026-11-11.
 
 The lockfile header of each of the 24 pnpm and yarn repositories above, at its head and at its last commit before 2025-11-15. It was gathered with Ojas's approval for the lockfile design ([§5](../docs/superpowers/specs/2026-11-15-pnpm-yarn-lockfiles-design.md)).
 
-| Format | At head | A year ago | Read since DECISIONS 37 |
+| Format | At head | A year ago | Read |
 |---|---|---|---|
 | pnpm 9.0, two documents (pnpm 12) | 10: vue core, vite, TanStack/query, trpc, h3, typescript-eslint, vueuse, docusaurus, hono, starlight | none | yes |
 | pnpm 9.0, one document | 9: zod, svelte, lexical, vitest, date-fns, msw, zustand, jotai, redux-toolkit | 13 | yes |
-| Berry 10 | prettier, babel | none | yes |
-| Berry 8 | es-toolkit | prettier, babel, es-toolkit, redux-toolkit | yes |
-| Berry 6 | none | typescript-eslint | no |
+| Berry 10 | prettier, babel | none | yes (DECISIONS 37) |
+| Berry 9 | none | none (prettier used it for 22 lockfile versions in between) | yes (DECISIONS 40) |
+| Berry 8 | es-toolkit | prettier, babel, es-toolkit, redux-toolkit | yes (DECISIONS 37) |
+| Berry 6 | none | typescript-eslint | yes (DECISIONS 40) |
 | classic v1 | excalidraw, immer | excalidraw, immer, docusaurus | yes |
 | other | none | lexical: npm v2; hono: `bun.lock`; date-fns: no lockfile found | npm v2 yes; bun no |
 
 - **Every lockfile format at head is read.** Of these lockfiles, only the five samples of the design were parsed (DECISIONS 36). Formats that are not read stay unparseable, so a change to one runs every test (L3).
 - **Five repositories changed lockfile kind within the year.** A replay that crosses such a change runs everything once, because a change of the lockfile's kind or path is L3.
-- **The corpus check is still to run.** The design's §9.4 plans every lockfile-only commit of the last 12 months on hono and excalidraw, and it needs Ojas's approval to clone them (DECISIONS 37).
+- **The corpus check ran on 2026-11-20** (DECISIONS 40), on six clones: hono, excalidraw, vuejs/core, es-toolkit, prettier and typescript-eslint. With Berry 6 and 9 read, every pnpm and yarn version of their last 12 months reads, 959 of 979; the 20 refused are hono's bun lockfiles. Of their 548 lockfile-only and dependency commits, 546 still run every test, 520 of them because a bumped package that no test reaches escalates the root (DECISIONS 29). That bears on the replay's `inputs.ignore` (HANDOFF §10 item 18).
 
 ## Collector set
 
