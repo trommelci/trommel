@@ -1,4 +1,4 @@
-// The yarn Berry reader: a yarn.lock of __metadata version 8 or 10 into the resolved model
+// The yarn Berry reader: a yarn.lock of __metadata version 6, 8, 9 or 10 into the resolved model
 // (spec 2026-11-15-pnpm-yarn-lockfiles §7.3). A key lists the descriptors (`name@range`) one entry
 // answers; an entry is identified by its `resolution`. A workspace entry is an importer, not an
 // entry, and a dependency on one is a link. A descriptor no key holds (yarn's own redirects, such
@@ -14,7 +14,12 @@ import { parseYamlSubset, YamlError } from './yaml.ts';
 import type { YamlMap, YamlValue } from './yaml.ts';
 
 const WORKSPACE = /^(.+)@workspace:(.*)$/;
-const VERSIONS: ReadonlySet<string> = new Set(['8', '10']);
+const VERSIONS: ReadonlySet<string> = new Set(['6', '8', '9', '10']);
+/**
+ * Version 6 (yarn 3) writes a dependency's range as the manifest has it, so an npm range has no protocol, while the
+ * keys carry yarn's default one. Versions 8 and later write the protocol in both places.
+ */
+const BARE_RANGES: ReadonlySet<string> = new Set(['6']);
 
 class Refusal extends Error {}
 
@@ -60,8 +65,9 @@ function read(text: string): ResolvedModel {
   }
   const version = metadata.get('version');
   if (typeof version !== 'string' || !VERSIONS.has(version)) {
-    refuse(`__metadata version ${typeof version === 'string' ? JSON.stringify(version) : 'is missing or not a string'}, and only '8' and '10' are read`);
+    refuse(`__metadata version ${typeof version === 'string' ? JSON.stringify(version) : 'is missing or not a string'}, and only '6', '8', '9' and '10' are read`);
   }
+  const bare = BARE_RANGES.has(version);
 
   const blocks: Block[] = [];
   const targets = new Map<string, Target>();
@@ -101,7 +107,7 @@ function read(text: string): ResolvedModel {
       if (typeof range !== 'string') {
         refuse(`${JSON.stringify(key)}: the range of ${JSON.stringify(name)} is not a string`);
       }
-      const target = targets.get(`${name}@${range}`);
+      const target = targets.get(`${name}@${range}`) ?? (bare ? targets.get(`${name}@npm:${range}`) : undefined);
       dependencies.set(name, target ?? { kind: 'unresolved' });
     }
     if (workspace !== null) {
