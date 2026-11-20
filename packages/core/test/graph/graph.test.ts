@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { DECLARED, DYNAMIC, forwardReach, Graph, GraphBuilder, reverseReach, STATIC, whyPath } from '../../src/graph/graph.ts';
+import { DECLARED, DYNAMIC, forwardReach, forwardTree, Graph, GraphBuilder, reverseReach, STATIC, whyPath } from '../../src/graph/graph.ts';
 
 const names = (graph: Graph, ids: Iterable<number>) => [...ids].map((id) => graph.name(id));
 
@@ -119,6 +119,34 @@ describe('forwardReach', () => {
   });
 });
 
+describe('forwardTree', () => {
+  it('reaches what the root depends on, with a shortest chain to each', () => {
+    const graph = login();
+    const tree = forwardTree(graph, graph.id('test/login.test.ts')!);
+    const chain = ['test/login.test.ts', 'src/auth/index.ts', 'src/auth/token.ts', 'src/util.ts'];
+    expect(names(graph, tree.order)).toEqual(chain);
+    expect(names(graph, whyPath(tree, graph.id('src/util.ts')!)!)).toEqual(chain);
+    expect(whyPath(tree, graph.id('test/other.test.ts')!)).toBeNull();
+  });
+
+  it('breaks ties between equally short chains by the lowest-numbered neighbour', () => {
+    const b = new GraphBuilder();
+    b.addEdge('t', 'y', STATIC);
+    b.addEdge('t', 'x', STATIC);
+    b.addEdge('x', 'z', STATIC);
+    b.addEdge('y', 'z', STATIC);
+    const graph = b.build();
+    const tree = forwardTree(graph, graph.id('t')!);
+    expect(names(graph, tree.order)).toEqual(['t', 'x', 'y', 'z']);
+    expect(names(graph, whyPath(tree, graph.id('z')!)!)).toEqual(['t', 'x', 'z']);
+  });
+
+  it('rejects a root that is not a node', () => {
+    expect(() => forwardTree(login(), -1)).toThrow(RangeError);
+    expect(() => forwardTree(login(), 5)).toThrow(RangeError);
+  });
+});
+
 // Random directed graphs (cycles allowed), random test nodes and change sets.
 const arbGraph = fc
   .integer({ min: 1, max: 30 })
@@ -187,6 +215,47 @@ describe('graph properties', () => {
         }
       }),
       { numRuns: 2000 },
+    );
+  });
+
+  it('forwardTree: every chain is a shortest path of real edges from the root', () => {
+    fc.assert(
+      fc.property(arbGraph, (g) => {
+        const graph = build(g);
+        for (let r = 0; r < graph.nodeCount; r++) {
+          const tree = forwardTree(graph, r);
+          expect([...tree.reached]).toEqual([...forwardReach(graph, [r])]);
+          // Oracle BFS over the edge list, layer by layer.
+          const dist = new Map<number, number>([[r, 0]]);
+          let frontier = [r];
+          for (let d = 1; frontier.length > 0; d++) {
+            const next: number[] = [];
+            for (const [from, to] of g.edges) {
+              const f = graph.id(label(from))!;
+              const t = graph.id(label(to))!;
+              if (frontier.includes(f) && !dist.has(t)) {
+                dist.set(t, d);
+                next.push(t);
+              }
+            }
+            frontier = next;
+          }
+          for (let v = 0; v < graph.nodeCount; v++) {
+            const path = whyPath(tree, v);
+            if (tree.reached[v] !== 1) {
+              expect(path).toBeNull();
+              continue;
+            }
+            expect(path![0]).toBe(r);
+            expect(path!.at(-1)).toBe(v);
+            for (let k = 1; k < path!.length; k++) {
+              expect(graph.dependencies(path![k - 1]!)).toContain(path![k]);
+            }
+            expect(path!.length - 1).toBe(dist.get(v));
+          }
+        }
+      }),
+      { numRuns: 300 },
     );
   });
 

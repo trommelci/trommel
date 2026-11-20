@@ -976,3 +976,83 @@ Implementation decisions too small or too local for an ADR, plus session hand-ov
     Done means no lockfile-only commit escalates to L3 because its lockfile cannot be read, the why-paths of selected tests name the changed packages, and the commits that end in L1 at the root are counted with their causes (spec §9.6). Under entry 29 many will still be L1, for bumps of tools that no test imports; the counts set up the replay's `inputs.ignore`.
   - **Not yet seen in CI.** Expect one run-all plan on each branch until a push to `main` caches a `trommel-static-4` map. The cause is "the map at .trommel/map/map.smap is invalid: the map was built by engine "trommel-static-3", expected trommel-static-4".
   - **No byte check on a second system before CI.** Only the engine id moved in the golden files, and CI runs both golden pins on Ubuntu and Windows.
+
+## 38. `trommel explain`: one test's decision in the static plan (2026-11-19)
+
+- **Context.** `trommel plan` gives each affected test one why-path, a forced test its reason, and a would-skip only its label. Nothing answered a question about one test: which changed nodes it reaches and through what, why it is forced, or whether it depends on a given file at all. The last is what a person asks when a shadow summary lists a would-skip that looks wrong ([HANDOFF.md](HANDOFF.md) §1). [architecture.md](docs/architecture.md) §5.1 lists `trommel explain <test>` as the why-path command, and it is an M1 scope item of HANDOFF §8, not an exit criterion. The design is [docs/superpowers/specs/2026-11-19-trommel-explain-design.md](docs/superpowers/specs/2026-11-19-trommel-explain-design.md).
+- **Decision.**
+  - **`trommel explain <test> [--to <file|node>] [--map <dir>] [--head <rev>] [--json]`.** `--map` defaults to `.trommel/map` under the repository root, wherever `explain` runs, and `--head` to `HEAD`. A `--map` given is read relative to the current directory, like every other path argument.
+    - **Why:** the build read the default from the current directory, as `plan` does, so `explain` run from `packages/cli` said "no map at .trommel/map/map.smap" for a map that was there. The whole-branch review found it.
+    - `plan` still reads its default from the current directory: its behaviour and output did not change. Messages and `--json` name the default map `.trommel/map/map.smap`, as before.
+  - **It explains the plan's decision and never makes one** (the spec's approach 1). `explain` loads the head and the map with the same two functions as `plan`, `headAt` and `planAt` in `cli.ts`, which moved out of `plan`. `planAt` takes the directory the map is resolved against: `plan` passes the current directory, and `explain` the root for its default map. It calls `selectStatic` and hands the `Selection` to `explainTest` in `core/select/explain.ts`. The verdict (`affected`, `forced` or `would-skip`), a forced test's reason and the plan's own path come from the `Selection` alone, so `explain` cannot disagree with `plan` for the same map, head and config.
+    - **Rejected: a selector of its own for one test** (approach 2). It could stop early, but it would repeat the planner's rules for escalations, hubs and lockfiles, and could drift from them.
+    - **Rejected: explain output from inside `selectStatic`** (approach 3). It changes the planner, which would then need the 70-commit replay, for no change in selection.
+  - **Paths come from one forward search from the test.** `forwardTree(graph, root)` in `core/graph/graph.ts` is a breadth-first search over dependencies with parent pointers, with the tie-break of `reverseReach`: neighbours in ascending id order, first discovery wins. It returns a `Reach`, so `whyPath` gives a shortest chain from the test to any node it reaches.
+    - An affected test lists every seed it reaches (a changed node or a `u:` node), sorted by key, each with a shortest path. A `u:` seed carries its causes from the map.
+    - The seed where the plan's why-path ends keeps the plan's own path, so the summary and `explain` never show two routes to one node. When two shortest paths tie, the plan's reverse search and the forward tree can pick different ones.
+    - `dependsOn` counts the nodes the test reaches besides itself, when the test is one of the map's tests. A would-skip reads "none of the N nodes it depends on changed".
+    - `explainTest(selection, test, context, to?)` takes the map and the graph as one `context`, which is null when there is no usable map. The spec had `explainTest(map, graph, selection, test, to?)`.
+  - **`--to`** gives the test's path to one node, from the same tree. The answers are checked in this order: no usable map; the target is not in the map; the test is not in the map; reached, with the path, or not reached.
+    - "Not reached" and "not in the map" both add that static reachability cannot see what a test reads through `fs`, so neither reads as proof of independence, the spec's anti-goal. The build said it after "not reached" only; the whole-branch review found it.
+    - Any L3 fallback whose map decodes can answer. An invalid configuration plans every test without reading the map, so for `explain` alone `readMap` in `cli.ts` decodes it then, for the paths only: the selection stays the run-all fallback, and `--json`'s `base` names the map. The build read no map under an invalid configuration and said "Without a usable map", against the spec's §4; the whole-branch review found it. `plan` still reads no map then.
+  - **What `--to` names.** An exact key of the map, or any value matching `/^[cdfgpru]:(?![\\/])/`, a node prefix not followed by a slash or a backslash, is a node key, with or without a map. Anything else is a file, `f:<path>`, so `C:\x` and `C:/x` stay paths. A directory is named as a node, `d:<dir>`, as `--help` says; no path falls back to a `d:` node.
+    - **Why:** the spec said an exact key, else a file. On Windows `path.resolve` reads `p:` as a drive, so a key that was missing from the map, or given with no map, exited 1 as "outside the repository", where the spec says 0 for any explanation. The review of the CLI found it.
+    - **Cost:** a Windows drive-relative path such as `c:foo` is read as a key.
+  - **Paths are relative to the current directory,** as git takes them, and `<test>` and a `--to` path become repository-relative POSIX paths. `repoPath` in `explain.ts` resolves the argument lexically against the current directory, then walks up its ancestors, nearest first, to the first one that exists and whose `realpathSync.native` is that of git's toplevel. The rest of the path below it, as typed, is the repository path.
+    - Ancestors that do not exist are skipped, so a file absent from the work tree resolves, and a link inside the repository stays as typed.
+    - When no ancestor matches, or the path is the root itself, it is outside the repository, and `explain` exits 1.
+    - So a Windows short name (`RUNNER~1`), a symlinked temporary directory (macOS `/var` → `/private/var`) or a link to the repository cannot make a file inside it look outside it, whether it is in the current directory or in an absolute argument.
+    - **Why:** the build took the real path of the root and of the current directory, but not of an absolute argument, so `explain` of a test's absolute path through a short name exited 1 as outside the repository. The whole-branch review found it.
+  - **Text by default, canonical JSON with `--json`.**
+    - The text is for a person. It hides the resolution hubs between two files, as the job summary does (`readable` and `shown` in `report.ts`, now exported), and keeps a hub at the end of a path, since that is what changed. It ends with "Shadow mode runs every test; this is what static selection would do."
+    - `--json` prints canonical JSON with `version`, `mode`, `static`, `base`, `head`, `fallback` when there is one, and `explanation`, hubs included.
+    - Either way the same input gives the same bytes. The header of `cli.ts`, which said that everything printed is canonical JSON, now names `explain`'s text as the exception.
+  - **On success `explain` writes only stdout:** nothing on stderr, and no `GITHUB_OUTPUT` or `GITHUB_STEP_SUMMARY` file. An internal error in planning still prints its stack to stderr and plans every test, as `plan` does, because the two share `planAt`.
+  - **The configured `selection.mode` is ignored.** `explain` explains the static, shadow-mode plan, the only plan M1 has. `plan` reads the mode to refuse `safe` with `--static`; `explain` has nothing to refuse.
+  - **Exit codes.** 0 for any explanation, a run-all fallback included. 1 for a name that is not a test Trommel plans at the head, whose message says how many it plans, or for a path outside the repository. 2 for a usage error.
+  - **The planner's random-repository generator** moved verbatim from `plan.test.ts` to `test/select/repos.ts`, so that the planner's soundness property and `explainTest`'s share it. `plan.test.ts` keeps its 52 tests and its 2,000 runs.
+- **Evidence.**
+  - **Tests.** 1,001 pass in 46 files on Windows 11, where entry 37 had 945 in 44. One of them runs on Windows only, so elsewhere 1,000 pass and 1 is skipped. Lint, typecheck and the zero-dependency check are clean.
+    - `graph.test.ts`, 4 more: `forwardTree` on a chain, a diamond whose tie goes to the lower id, a root that is not a node, and a 300-run property. Every reached node's chain is a run of real edges from the root, as long as the BFS distance, and an unreached node has none.
+    - `select/explain.test.ts`, 12: each verdict, the plan's path for the seed it names, a tie where it differs from the tree's, a `u:` seed's causes, a run-all plan with no map, `--to`'s answers, a test the plan does not have, and a 500-run property against `selectStatic` on the planner's random repository pairs. For every test the verdict and the reason match the selection, an affected test's seeds are exactly the seeds it reaches, each seed's path is as long as its distance from the test in `forwardTree`, and the plan's path appears unchanged.
+    - `cli/test/explain.test.ts`, 22: the text renderer, `targetNode` and `repoPath`. `cli.test.ts`, 16 more, end to end: affected, would-skip, `--to` reached, not reached and not in the map, the no-map fallback, `--to` under an invalid configuration, key-shaped `--to` values, `--json` twice byte for byte, the fallback in the JSON, no GitHub outputs, a test and `--map` given from a subdirectory, the default map from a subdirectory, an absolute path (through a link to the repository too), backslashes (Windows only), exit 1 for a path outside the repository and for a file Trommel does not plan, and exit 2 with no test. `args.test.ts`, 2 more.
+    - New tests and L1 are tested in `explainTest` and in the renderer, not end to end; the no-map case covers the forced path through the CLI.
+  - **The whole-branch review's fix wave** added 8 of those tests to the build's 993. Each failed before its fix:
+    - `repoPath`, 4: an absolute path through a link to the repository (a junction on Windows), files and directories absent from the work tree, a link inside the repository kept as typed, and paths outside refused through the link or not.
+    - End to end, 3: the default map read at the root from `test/` (it said "L3: no map at .trommel/map/map.smap"), an absolute path, and `--to` under an invalid configuration (it said "Without a usable map"). The absolute path failed through a junction to the repository, and through the plain temporary path when `TEMP` named the temporary directory by a short (8.3) name, as `RUNNER~1` does in CI.
+    - `args.test.ts`, 1: the help gives `explain`'s defaults and `d:<dir>`. Its `explain` test now expects `map: null` without `--map`.
+    - The renderer's and the end-to-end expectations for "not in the map" gained the `fs` caveat.
+    - The `explainTest` property's new check of path lengths catches a mutant whose tree is depth-first: real edges, not always shortest. The old property passed it in all 500 runs.
+    - The same `repoPath` cases, run on Linux (WSL, Node 22.22.1, `/tmp`) from a copy with its types stripped by hand, pass.
+  - **10 hand mutants, all caught; 2 survived their first pass and gained tests.**
+    - **`forwardTree`:** a parent pointer always set to the root is caught. Neighbours visited in descending order survived the planned tests, so the diamond test was added, and it fails.
+    - **`explainTest`:** always the tree's path, never the plan's, survived the planned tests, because the two paths coincided in every fixture and in all 500 property runs. The tie test was added, and it fails. Dropping the `u:` seeds, taking the verdict from the tree, and counting the test itself in `dependsOn` are each caught.
+    - **The CLI:** resolving against the root instead of the current directory, `--to` always read as a path, the ` (changed)` mark dropped, and the not-a-planned-test check dropped are each caught.
+  - **Nothing the plan reads changed.** `git diff --stat origin/main -- packages/core/src/select/plan.ts packages/core/src/graph/static.ts packages/core/src/graph/map.ts packages/core/src/smap` prints nothing. So the engine stays `trommel-static-4`, no golden hash moved, every selection is as it was, and no history replay was needed.
+  - **On this repository.** The map was built at `c3c75c0` (557 nodes, 1,327 edges, 46 tests, 51,206 bytes) and the head was `19f3ba5`, which changed `packages/cli/src/explain.ts` and two test files. `plan` would run 5 of the 46 test files and skip 41. With `trommel` standing for `node packages/cli/src/main.ts`:
+
+    ```text
+    $ trommel explain packages/cli/test/explain.test.ts
+    packages/cli/test/explain.test.ts would run: it reaches 2 changed or uncertain nodes.
+      packages/cli/test/explain.test.ts → packages/cli/src/explain.ts (changed)
+      packages/cli/test/explain.test.ts (changed)
+    Shadow mode runs every test; this is what static selection would do.
+    $ trommel explain packages/cli/test/report.test.ts
+    packages/cli/test/report.test.ts would be skipped (unproven static reachability): none of the 146 nodes it depends on changed.
+    Shadow mode runs every test; this is what static selection would do.
+    $ trommel explain packages/cli/test/cli.test.ts --to packages/cli/src/explain.ts
+    packages/cli/test/cli.test.ts would run: it reaches 2 changed or uncertain nodes.
+      packages/cli/test/cli.test.ts → g:declared:packages/cli/src/** → packages/cli/src/explain.ts (changed)
+      packages/cli/test/cli.test.ts (changed)
+    Path to packages/cli/src/explain.ts: packages/cli/test/cli.test.ts → g:declared:packages/cli/src/** → packages/cli/src/explain.ts
+    Shadow mode runs every test; this is what static selection would do.
+    $ trommel explain packages/cli/test/report.test.ts --to packages/cli/src/explain.ts
+    packages/cli/test/report.test.ts would be skipped (unproven static reachability): none of the 146 nodes it depends on changed.
+    packages/cli/test/report.test.ts does not reach packages/cli/src/explain.ts in the map. Static reachability cannot see what a test reads through fs.
+    Shadow mode runs every test; this is what static selection would do.
+    ```
+
+    - The plan's why-path for both changed test files is the file itself. `explain` adds the seed the plan does not show: `explain.test.ts` imports `explain.ts`, and `cli.test.ts`, which runs the CLI as a child process, reaches it only through the declared input of `trommel.config.json`.
+    - Each run exits 0 with nothing on stderr. `trommel explain packages/cli/src/explain.ts` exits 1: "packages/cli/src/explain.ts is not a test file Trommel plans at HEAD; it plans 46 test files".
+    - After the fix wave, `trommel explain test/report.test.ts --head 19f3ba5` run from `packages/cli` prints the same two lines for `report.test.ts` as above, and so does the test's absolute path through the short (8.3) names of the directories above the repository. With the code at `1ac3554`, before the wave, the first said "L3: no map at .trommel/map/map.smap" and the second exited 1 as outside the repository.
+- **Not yet seen in CI.** The Windows job runs the end-to-end tests in a temporary directory under `RUNNER~1`, which the ancestor walk of `repoPath` is for: there the absolute-path test names the repository through the short name. No CI job runs on macOS, where `/var` is a link to `/private/var`.

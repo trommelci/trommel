@@ -1,10 +1,10 @@
 // End to end: the CLI run from source, as CI runs it, against a throwaway git repository.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { canonicalJson, decodeContainer, decodeSmap, encodeContainer } from '@trommel/core';
+import { canonicalJson, decodeContainer, decodeSmap, encodeContainer, forwardReach } from '@trommel/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const MAIN = join(import.meta.dirname, '..', 'src', 'main.ts');
@@ -31,9 +31,9 @@ interface Run {
   readonly stdout: string;
   readonly stderr: string;
 }
-const trommel = (args: string[], env: Record<string, string> = {}): Run => {
+const trommel = (args: string[], env: Record<string, string> = {}, cwd: string = repo): Run => {
   const clean = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GITHUB_')));
-  const result = spawnSync(process.execPath, [MAIN, ...args], { cwd: repo, encoding: 'utf8', env: { ...clean, ...env } });
+  const result = spawnSync(process.execPath, [MAIN, ...args], { cwd, encoding: 'utf8', env: { ...clean, ...env } });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 };
 
@@ -170,6 +170,159 @@ describe('trommel plan fallbacks', () => {
     expect((JSON.parse(run.stdout) as { fallback: string }).fallback).toBe('invalid trommel.config.json: version: must be 1');
     git('rm', '-q', 'trommel.config.json');
     git('commit', '-q', '-m', 'c');
+  });
+});
+
+describe('trommel explain', () => {
+  // The map of `base`; the head is the commit where src/b.ts changed.
+  const FOOTER = 'Shadow mode runs every test; this is what static selection would do.\n';
+  const A_TEXT = `test/a.test.ts would run: it reaches 1 changed or uncertain node.\n  test/a.test.ts → src/a.ts → src/b.ts (changed)\n${FOOTER}`;
+  const explain = (args: string[], cwd?: string): Run => trommel(['explain', ...args], {}, cwd);
+  // The fallback tests above left their map fixtures in the work tree, and the config test committed
+  // them; unmapped inputs would escalate every test (L1). Remove them from the head.
+  beforeAll(() => {
+    git('rm', '-rq', 'bad', 'json', 'empty', 'cut', 'stub', 'stale', 'other', 'both');
+    git('commit', '-q', '-m', 'remove map fixtures');
+  });
+  const dependsOn = (test: string): number => {
+    const { map, graph } = decodeSmap(readFileSync(join(repo, '.trommel/map/map.smap')));
+    expect(map.tests).toContain(test);
+    return forwardReach(graph, [graph.id(`f:${test}`)!]).reduce((sum, flag) => sum + flag, 0) - 1;
+  };
+
+  it('explains an affected test', () => {
+    const run = explain(['test/a.test.ts']);
+    expect(run).toEqual({ status: 0, stdout: A_TEXT, stderr: '' });
+  });
+
+  it('explains a would-skip, counting what the test depends on', () => {
+    const run = explain(['test/c.test.ts']);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toBe(
+      `test/c.test.ts would be skipped (unproven static reachability): none of the ${dependsOn('test/c.test.ts')} nodes it depends on changed.\n${FOOTER}`,
+    );
+  });
+
+  it('prints the path to a file or a map node after the verdict', () => {
+    expect(explain(['test/a.test.ts', '--to', 'src/b.ts']).stdout).toBe(A_TEXT.replace(FOOTER, `Path to src/b.ts: test/a.test.ts → src/a.ts → src/b.ts\n${FOOTER}`));
+    expect(explain(['test/c.test.ts', '--to', 'src/b.ts']).stdout).toContain(
+      '\ntest/c.test.ts does not reach src/b.ts in the map. Static reachability cannot see what a test reads through fs.\n',
+    );
+    expect(explain(['test/c.test.ts', '--to', 'src/zzz.ts']).stdout).toContain(
+      '\nsrc/zzz.ts is not in the map. Static reachability cannot see what a test reads through fs.\n',
+    );
+    const lodash = explain(['test/c.test.ts', '--to', 'p:npm:node_modules/lodash']).stdout;
+    expect(lodash).toMatch(/\nPath to p:npm:node_modules\/lodash: test\/c\.test\.ts → .*→ p:npm:node_modules\/lodash\n/);
+  });
+
+  it('says so, exiting 0, when there is no map', () => {
+    const run = explain(['test/a.test.ts', '--map', 'nowhere', '--to', 'src/b.ts']);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toBe(
+      `test/a.test.ts would run: L3: no map at nowhere/map.smap.\nWithout a usable map, the path to src/b.ts is unknown.\n${FOOTER}`,
+    );
+    expect(run.stderr).toBe('');
+  });
+
+  it('answers --to from the map when trommel.config.json is invalid, and still runs everything', () => {
+    commit({ 'trommel.config.json': '{ "version": 2 }' });
+    try {
+      const cause = 'invalid trommel.config.json: version: must be 1';
+      expect(explain(['test/a.test.ts', '--to', 'src/b.ts'])).toEqual({
+        status: 0,
+        stdout: `test/a.test.ts would run: L3: ${cause}.\nPath to src/b.ts: test/a.test.ts → src/a.ts → src/b.ts\n${FOOTER}`,
+        stderr: '',
+      });
+      const out = JSON.parse(explain(['test/a.test.ts', '--to', 'src/b.ts', '--json']).stdout) as Record<string, unknown>;
+      expect(out).toMatchObject({ base: { map: '.trommel/map/map.smap' }, fallback: cause, explanation: { verdict: 'forced', reason: `L3: ${cause}`, to: { status: 'reached' } } });
+    } finally {
+      git('rm', '-q', 'trommel.config.json');
+      git('commit', '-q', '-m', 'c');
+    }
+  });
+
+  it('reads a key-shaped --to value as a node key, never as a path', () => {
+    const noMap = explain(['test/a.test.ts', '--map', 'nowhere', '--to', 'p:npm:node_modules/lodash']);
+    expect(noMap.status).toBe(0);
+    expect(noMap.stdout.endsWith(`\nWithout a usable map, the path to p:npm:node_modules/lodash is unknown.\n${FOOTER}`)).toBe(true);
+    const missing = explain(['test/a.test.ts', '--to', 'u:src/nothing.ts']);
+    expect(missing.status).toBe(0);
+    expect(missing.stdout).toContain('\nu:src/nothing.ts is not in the map. Static reachability cannot see what a test reads through fs.\n');
+  });
+
+  it('prints the explanation as canonical JSON, byte for byte the same each time', () => {
+    const run = explain(['test/a.test.ts', '--json']);
+    expect(run.status).toBe(0);
+    const out = JSON.parse(run.stdout) as Record<string, unknown>;
+    const path = ['f:test/a.test.ts', 'r:src/a', 'f:src/a.ts', 'r:src/b', 'f:src/b.ts'];
+    expect(out['explanation']).toEqual({ test: 'test/a.test.ts', verdict: 'affected', path, seeds: [{ node: 'f:src/b.ts', path }], dependsOn: dependsOn('test/a.test.ts') });
+    expect(out).toMatchObject({ version: 1, mode: 'shadow', static: true, base: { map: '.trommel/map/map.smap' }, head: { rev: 'HEAD' } });
+    expect(out['fallback']).toBeUndefined();
+    expect(explain(['test/a.test.ts', '--json']).stdout).toBe(run.stdout);
+  });
+
+  it('reports the fallback in the JSON, with no base', () => {
+    const out = JSON.parse(explain(['test/a.test.ts', '--json', '--map', 'nowhere']).stdout) as Record<string, unknown>;
+    expect(out).toMatchObject({ base: null, fallback: 'no map at nowhere/map.smap', explanation: { verdict: 'forced', reason: 'L3: no map at nowhere/map.smap' } });
+  });
+
+  it('writes no GitHub outputs', () => {
+    const outputs = join(repo, '..', `${repo.split(/[\\/]/).at(-1)!}-explain.txt`);
+    const run = trommel(['explain', 'test/a.test.ts'], { GITHUB_OUTPUT: outputs, GITHUB_STEP_SUMMARY: outputs });
+    expect(run.status).toBe(0);
+    expect(() => readFileSync(outputs)).toThrow(/ENOENT/);
+  });
+
+  it('takes the test and --map relative to the current directory', () => {
+    expect(explain(['a.test.ts', '--map', '../.trommel/map'], join(repo, 'test'))).toEqual({ status: 0, stdout: A_TEXT, stderr: '' });
+  });
+
+  it('reads the default map at the repository root, from a subdirectory too', () => {
+    const fromRoot = explain(['test/a.test.ts']);
+    expect(fromRoot).toEqual({ status: 0, stdout: A_TEXT, stderr: '' });
+    expect(explain(['a.test.ts'], join(repo, 'test'))).toEqual(fromRoot);
+    const out = JSON.parse(explain(['a.test.ts', '--json'], join(repo, 'test')).stdout) as { base: { map: string } };
+    expect(out.base.map).toBe('.trommel/map/map.smap');
+  });
+
+  it('takes an absolute path, through a link to the repository too', () => {
+    const fromRoot = explain(['test/a.test.ts']);
+    // On a Windows runner the temporary directory is under a short name (RUNNER~1), so this path is too.
+    expect(explain([join(repo, 'test', 'a.test.ts')])).toEqual(fromRoot);
+    // A junction on Windows, which needs no privilege; a symlink elsewhere.
+    const outside = mkdtempSync(join(tmpdir(), 'trommel-cli-link-'));
+    const link = join(outside, 'repo');
+    symlinkSync(repo, link, 'junction');
+    try {
+      expect(explain([join(link, 'test', 'a.test.ts')])).toEqual(fromRoot);
+    } finally {
+      unlinkSync(link);
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform === 'win32')('takes backslashes on Windows', () => {
+    expect(explain(['test\\a.test.ts']).stdout).toBe(A_TEXT);
+  });
+
+  it('exits 1 for a path outside the repository', () => {
+    const run = explain(['../outside.test.ts']);
+    expect(run.status).toBe(1);
+    expect(run.stdout).toBe('');
+    expect(run.stderr).toContain('../outside.test.ts is outside the repository');
+  });
+
+  it('exits 1 for a file Trommel does not plan', () => {
+    const run = explain(['src/a.ts']);
+    expect(run.status).toBe(1);
+    expect(run.stdout).toBe('');
+    expect(run.stderr).toBe('trommel: src/a.ts is not a test file Trommel plans at HEAD; it plans 2 test files\n');
+  });
+
+  it('exits 2 without a test', () => {
+    const run = explain([]);
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain('explain takes one test file: trommel explain <test>');
   });
 });
 

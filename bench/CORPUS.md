@@ -123,8 +123,12 @@ The list lives in [`tools/corpus/repos.json`](../tools/corpus/repos.json). For e
 - Requests per run stay near 25,000: 24,581, 25,086, 26,079, 23,978 and 24,934. Every run spent its 320-minute budget.
 - Work items still pending fell from 2,270 and 2,197 under the old collector to 1,082, 703 and then 407.
 - After the fifth run, 12 of the 25 repositories have every day of the 87-day window (89 to 3 days ago). The slowest six (AutoGPT, TanStack/query, baserow, lexical, prettier, luma.gl) have 48 days, vuejs/core 49, vite 50, meshery 52, svelte 66, trpc 75, and babel and typescript-eslint 85.
-- The fifth run added about 17 days to each of the slowest six. At that pace, by estimate, the backlog clears in about three more daily runs: faster than the 2–3 weeks estimated from the first run. Collection goes oldest day first, so what is still missing is mostly the recent end of the window, the furthest from expiring.
+- The fifth run added about 17 days to each of the slowest six. Collection goes oldest day first, so what was still missing after it was mostly the recent end of the window, the furthest from expiring.
 - The fifth run, the first after the move to `trommelci`, mirrored no test-report archives; the fourth mirrored 15. The data is almost all run, attempt and job metadata, as the first run suggested.
+
+**The backlog is cleared (to the 2026-11-19 manifest).** Every daily run from 2026-11-15 to 2026-11-19 succeeded.
+- The backlog was clear by the tenth run, on 2026-11-19, eight days after the first: faster than the 2–3 weeks estimated from the first run. Its manifest has nothing pending, and the run was not stopped early.
+- 24 of the 25 repositories have every day of the 87-day window. lexical has 86: its backfill item for 2026-11-15 ended in an error, "GET https://api.github.com/repos/facebook/lexical/actions/artifacts/14178703494/zip returned 301: expected a redirect to the archive", and every other lexical day is complete. The next run retries it, as the fourth run did for an es-toolkit error in the third. Whether the 301 recurs is not known yet.
 
 **Where the data lives.** It goes in a separate public repository, [trommelci/trommel-corpus](https://github.com/trommelci/trommel-corpus), created on 2026-11-11. Its template is in [`tools/corpus/corpus-repo/`](../tools/corpus/corpus-repo/README.md).
 - Daily manifests and the collector state are committed to git.

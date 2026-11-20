@@ -6,7 +6,7 @@ export { lsTree, readBlobs, readObjectFormat, repoRoot, type ObjectFormat } from
 export { LsTreeParser, objectTypeOf, parseLsTree, type LsTreeEntry, type ObjectType } from './git/ls-tree.ts';
 export { GitVfs } from './git/vfs.ts';
 export { dialectOf, lexImports, lexImportsFromBytes, type Dialect, type DiagnosticCode, type ImportKind, type ImportRecord, type LexDiagnostic, type LexResult } from './lex/ts.ts';
-export { DECLARED, DYNAMIC, forwardReach, Graph, GraphBuilder, reverseReach, STATIC, whyPath, type Reach } from './graph/graph.ts';
+export { DECLARED, DYNAMIC, forwardReach, forwardTree, Graph, GraphBuilder, reverseReach, STATIC, whyPath, type Reach } from './graph/graph.ts';
 export { globToRegExp, matchGlobs } from './resolve/glob.ts';
 export { parseJsonc } from './resolve/jsonc.ts';
 export { dirname, exportsTargets, joinPath, MemoryVfs, Resolver, type EntryKind, type GlobEvidence, type Hub, type PathEvidence, type Resolution, type ResolutionKind, type ResolveRequest, type Vfs } from './resolve/resolver.ts';
@@ -15,6 +15,7 @@ export { detectLockfile, LOCKFILE_PATHS, NpmLockfile, npmLockfile, parseNpmLockf
 export { buildStaticMap, ENGINE, fileHash, globHash, hubHash, isHub, isLexed, isModule, listingHash, MAP_VERSION, readLockfile, sha256, type DeclaredRule, type LockfileState, type MapLockfile, type TrommelMap, type StaticInput } from './graph/static.ts';
 export { MapError, mapGraph, mapIndex } from './graph/map.ts';
 export { CONFIG_PATH, runAll, selectStatic, type Escalation, type HeadState, type PlanRules, type Selection } from './select/plan.ts';
+export { explainTest, type ExplainContext, type Explanation, type SeedPath, type Target, type Verdict } from './select/explain.ts';
 export { SmapEncodeError } from './smap/bytes.ts';
 export { decodeContainer, encodeContainer, FORMAT, layerAddress, SNAPSHOT_LAYER, STATIC_LAYER, type Container, type Section } from './smap/container.ts';
 export { decodeSmap, encodeSmap, type Smap } from './smap/smap.ts';

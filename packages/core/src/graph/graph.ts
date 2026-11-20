@@ -245,6 +245,36 @@ export function forwardReach(graph: Graph, seeds: Iterable<number>): Uint8Array 
   return reached;
 }
 
+/**
+ * Forward BFS from one node, keeping parent pointers: `whyPath(tree, v)` is a shortest chain
+ * `root … v` of dependency edges. First discovery wins, neighbours in ascending id order.
+ */
+export function forwardTree(graph: Graph, root: number): Reach {
+  const n = graph.nodeCount;
+  if (!Number.isInteger(root) || root < 0 || root >= n) {
+    throw new RangeError(`root ${root} is not a node`);
+  }
+  const reached = new Uint8Array(n);
+  const parent = new Int32Array(n).fill(-1);
+  const queue = new Uint32Array(n);
+  reached[root] = 1;
+  queue[0] = root;
+  let tail = 1;
+  const { fwdOffsets, fwdTargets } = graph;
+  for (let head = 0; head < tail; head++) {
+    const v = queue[head]!;
+    for (let k = fwdOffsets[v]!; k < fwdOffsets[v + 1]!; k++) {
+      const w = fwdTargets[k]!;
+      if (reached[w] === 0) {
+        reached[w] = 1;
+        parent[w] = v;
+        queue[tail++] = w;
+      }
+    }
+  }
+  return { reached, parent, order: queue.slice(0, tail) };
+}
+
 /** The chain from a seed to `node` (seed first), or null when `node` was not reached. */
 export function whyPath(reach: Reach, node: number): number[] | null {
   if (reach.reached[node] !== 1) {

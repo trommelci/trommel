@@ -1,6 +1,7 @@
 // The `trommel` commands. Everything is read from git objects at a revision (never the working
-// tree), and everything printed is canonical JSON, so the same inputs give the same bytes. The map
-// on disk is a SMAP file (ADR-0009, docs/smap-format.md), which has that property too.
+// tree). Commands print canonical JSON, so the same inputs give the same bytes, except `explain`,
+// whose default output is text for a person (it is deterministic too, and --json gives the JSON).
+// The map on disk is a SMAP file (ADR-0009, docs/smap-format.md), which has that property too.
 //
 // Exit codes: 0 success (a plan that fell back to running everything is a success: it must never
 // block CI), 1 an error, 2 a usage error.
@@ -14,6 +15,7 @@ import {
   decodeSmap,
   diffLockfiles,
   encodeSmap,
+  explainTest,
   GitVfs,
   isLexed,
   lsTree,
@@ -32,8 +34,9 @@ import {
   type Smap,
 } from '@trommel/core';
 
-import { parseCommand, planMode, USAGE, UsageError, type Command } from './args.ts';
+import { MAP_DIR, parseCommand, planMode, USAGE, UsageError, type Command } from './args.ts';
 import { CONFIG_FILE, ConfigError, discoverTests, parseConfig, rulesOf, type TrommelConfig } from './config.ts';
+import { explanationText, repoPath, targetNode } from './explain.ts';
 import { buildReport, githubOutputs, summaryOf } from './report.ts';
 
 export interface Io {
@@ -62,6 +65,8 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
         return await graph(command, io);
       case 'diff':
         return await diff(command, io);
+      case 'explain':
+        return await explain(command, io);
       case 'plan':
         return await plan(command, io);
     }
@@ -172,35 +177,53 @@ function describe(lockfile: LockfileState): string {
   return lockfile.kind === 'parsed' ? `${lockfile.lockfile.kind} ${lockfile.lockfile.path}` : lockfile.kind === 'unparseable' ? `${lockfile.paths.join(', ')} (unparseable: ${lockfile.reason})` : 'none';
 }
 
-async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promise<number> {
-  const head = await snapshotAt(await repoRoot(io.cwd), command.head);
-  let config: TrommelConfig = { version: 1 };
-  let fallback: string | undefined;
+interface Head {
+  readonly snapshot: Snapshot;
+  /** `{ version: 1 }` when the configuration is invalid. */
+  readonly config: TrommelConfig;
+  /** The configuration error, which makes the plan run everything. */
+  readonly fallback?: string;
+}
+
+async function headAt(io: Io, rev: string): Promise<Head> {
+  const snapshot = await snapshotAt(await repoRoot(io.cwd), rev);
   try {
-    config = configOf(head);
+    return { snapshot, config: configOf(snapshot) };
   } catch (error) {
     if (!(error instanceof ConfigError)) {
       throw error;
     }
-    fallback = error.message;
+    return { snapshot, config: { version: 1 }, fallback: error.message };
   }
-  planMode(command, fallback === undefined ? config.selection?.mode : undefined);
+}
+
+interface PlanAt {
+  readonly tests: readonly string[];
+  readonly notPlanned: readonly string[];
+  readonly mapPath: string;
+  readonly smap: Smap | null;
+  readonly selection: Selection;
+  readonly fallback?: string;
+}
+
+/**
+ * The static plan at `head` from the map in `mapDir`, resolved against the directory `from`; with no
+ * usable map, every test, and why. Messages name the map as `mapDir` gives it.
+ */
+function planAt(io: Io, head: Head, mapDir: string, from: string): PlanAt {
+  const { snapshot, config } = head;
+  let fallback = head.fallback;
   const rules = rulesOf(config);
-  const { tests, notPlanned } = discoverTests(head.vfs.files(), config);
-  const mapPath = `${command.map.replace(/[\\/]+$/, '')}/map.smap`;
+  const { tests, notPlanned } = discoverTests(snapshot.vfs.files(), config);
+  const mapPath = `${mapDir.replace(/[\\/]+$/, '')}/map.smap`;
 
   let smap: Smap | null = null;
   if (fallback === undefined) {
-    try {
-      smap = decodeSmap(readFileSync(resolve(io.cwd, mapPath)));
-    } catch (error) {
-      if (error instanceof MapError) {
-        fallback = `the map at ${mapPath} is invalid: ${error.message}`;
-      } else if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        fallback = `no map at ${mapPath}`;
-      } else {
-        fallback = `the map at ${mapPath} cannot be read: ${(error as Error).message}`;
-      }
+    const read = readMap(mapPath, from);
+    if (read.smap === null) {
+      fallback = read.fallback;
+    } else {
+      smap = read.smap;
     }
   }
   let selection: Selection;
@@ -208,7 +231,7 @@ async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promis
     selection = runAll(tests, fallback!);
   } else {
     try {
-      const state = { objectFormat: head.objectFormat, index: head.index, vfs: head.vfs, tests, config: head.config?.oid ?? null };
+      const state = { objectFormat: snapshot.objectFormat, index: snapshot.index, vfs: snapshot.vfs, tests, config: snapshot.config?.oid ?? null };
       selection = selectStatic(smap.map, state, { ignore: rules.ignore, alwaysRun: rules.alwaysRun }, smap.graph);
     } catch (error) {
       // A bug must not block CI either: run everything and say why.
@@ -217,14 +240,36 @@ async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promis
       selection = runAll(tests, fallback);
     }
   }
+  return { tests, notPlanned, mapPath, smap, selection, ...(fallback === undefined ? {} : { fallback }) };
+}
+
+/** The map at `mapPath`, resolved against the directory `from`, or why there is no usable map. */
+function readMap(mapPath: string, from: string): { readonly smap: Smap } | { readonly smap: null; readonly fallback: string } {
+  try {
+    return { smap: decodeSmap(readFileSync(resolve(from, mapPath))) };
+  } catch (error) {
+    if (error instanceof MapError) {
+      return { smap: null, fallback: `the map at ${mapPath} is invalid: ${error.message}` };
+    }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { smap: null, fallback: `no map at ${mapPath}` };
+    }
+    return { smap: null, fallback: `the map at ${mapPath} cannot be read: ${(error as Error).message}` };
+  }
+}
+
+async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promise<number> {
+  const head = await headAt(io, command.head);
+  planMode(command, head.fallback === undefined ? head.config.selection?.mode : undefined);
+  const { notPlanned, mapPath, smap, selection, fallback } = planAt(io, head, command.map, io.cwd);
 
   const report = buildReport({
     selection,
     base: smap === null ? null : { map: mapPath, rootTree: smap.map.rootTree },
-    head: { rev: command.head, rootTree: head.index.rootOid },
+    head: { rev: command.head, rootTree: head.snapshot.index.rootOid },
     ...(smap === null ? {} : { uncertainCauses: smap.map.uncertain }),
     notPlanned,
-    shards: command.shards ?? rules.shards,
+    shards: command.shards ?? rulesOf(head.config).shards,
     ...(fallback === undefined ? {} : { fallback }),
   });
   io.stdout(canonicalJsonPretty(report));
@@ -241,5 +286,39 @@ async function plan(command: Extract<Command, { name: 'plan' }>, io: Io): Promis
       ? `trommel plan: shadow mode runs all ${report.run.length} test files; static reachability would run ${report.wouldRun} and skip ${report.wouldSkip.length} (unproven)\n`
       : `trommel plan: running all ${report.run.length} test files: ${fallback}\n`,
   );
+  return 0;
+}
+
+async function explain(command: Extract<Command, { name: 'explain' }>, io: Io): Promise<number> {
+  const head = await headAt(io, command.head);
+  const { root } = head.snapshot;
+  // The static plan, whatever selection.mode says: explain never selects, it explains. The default
+  // map is the repository's, wherever explain runs; a --map given is relative to the current directory.
+  const [mapDir, from] = command.map === null ? [MAP_DIR, root] : [command.map, io.cwd];
+  const { tests, mapPath, smap: planned, selection, fallback } = planAt(io, head, mapDir, from);
+  // An invalid configuration plans everything without reading the map. The selection stays that
+  // fallback, but the paths, --to's included, still come from the map when it decodes.
+  const smap = planned ?? (head.fallback === undefined ? null : readMap(mapPath, from).smap);
+  const test = repoPath(root, io.cwd, command.test);
+  if (!selection.tests.includes(test)) {
+    throw new Error(`${command.test} is not a test file Trommel plans at ${command.head}; it plans ${tests.length} test ${tests.length === 1 ? 'file' : 'files'}`);
+  }
+  const to = command.to === null ? undefined : targetNode(command.to, () => repoPath(root, io.cwd, command.to!), smap?.map ?? null);
+  const explanation = explainTest(selection, test, smap === null ? null : { map: smap.map, graph: smap.graph }, to);
+  if (command.json) {
+    io.stdout(
+      canonicalJsonPretty({
+        version: 1,
+        mode: 'shadow',
+        static: true,
+        base: smap === null ? null : { map: mapPath, rootTree: smap.map.rootTree },
+        head: { rev: command.head, rootTree: head.snapshot.index.rootOid },
+        ...(fallback === undefined ? {} : { fallback }),
+        explanation,
+      }),
+    );
+  } else {
+    io.stdout(explanationText(explanation));
+  }
   return 0;
 }

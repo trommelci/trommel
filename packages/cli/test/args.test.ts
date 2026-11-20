@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseCommand, planMode, UsageError } from '../src/args.ts';
+import { parseCommand, planMode, USAGE, UsageError } from '../src/args.ts';
 
 describe('parseCommand', () => {
   it('reads graph with its defaults and options', () => {
@@ -20,6 +20,16 @@ describe('parseCommand', () => {
     expect(parseCommand(['plan', '--shadow', '--static', '--map', '.trommel/map'])).toEqual(plan);
     expect(parseCommand(['plan', '--static'])).toEqual({ ...plan, mode: null });
     expect(parseCommand(['plan', '--static', '--shards', '4', '--head', 'abc'])).toEqual({ ...plan, mode: null, shards: 4, head: 'abc' });
+  });
+
+  it('reads explain with one test, and its options', () => {
+    // No --map is null: explain's default map is at the repository root, not the current directory.
+    const explain = { name: 'explain', test: 'test/a.test.ts', to: null, map: null, head: 'HEAD', json: false };
+    expect(parseCommand(['explain', 'test/a.test.ts'])).toEqual(explain);
+    expect(parseCommand(['explain', 'test/a.test.ts', '--to', 'x', '--map', 'm', '--head', 'h', '--json'])).toEqual({ ...explain, to: 'x', map: 'm', head: 'h', json: true });
+    for (const argv of [['explain'], ['explain', 'a', 'b']]) {
+      expect(() => parseCommand(argv)).toThrow(new UsageError('explain takes one test file: trommel explain <test>'));
+    }
   });
 
   it.each([
@@ -58,5 +68,14 @@ describe('planMode', () => {
   it('refuses budget mode and plans without --static, which need records', () => {
     expect(() => planMode({ mode: 'budget', static: true }, undefined)).toThrow(/budget/);
     expect(() => planMode({ mode: 'shadow', static: false }, undefined)).toThrow(/needs --static/);
+  });
+});
+
+describe('USAGE', () => {
+  it("gives explain's defaults, and how to name a directory", () => {
+    const explain = USAGE.slice(USAGE.indexOf('  explain <test>'), USAGE.indexOf('Options:')).replace(/\s+/g, ' ');
+    expect(explain).toContain('(default .trommel/map under the repository root)');
+    expect(explain).toContain('(default HEAD)');
+    expect(explain).toContain('d:<dir>');
   });
 });
